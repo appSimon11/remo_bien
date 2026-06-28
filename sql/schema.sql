@@ -1,43 +1,30 @@
 CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
+  id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(80) NOT NULL UNIQUE,
   password_plain VARCHAR(120) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS pools (
-  id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
   name VARCHAR(120) NOT NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uniq_pool_user_name UNIQUE (user_id, name)
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uniq_pool_user_name UNIQUE (user_id, name),
+  CONSTRAINT fk_pools_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS captures (
-  id SERIAL PRIMARY KEY,
-  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  pool_id INT NOT NULL REFERENCES pools(id) ON DELETE CASCADE,
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  pool_id INT NOT NULL,
   capture_date DATE NOT NULL,
-  visible_total NUMERIC(16, 2) NOT NULL,
-  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'csv_import')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT uniq_capture_user_pool_date UNIQUE (user_id, pool_id, capture_date)
+  visible_total DECIMAL(16, 2) NOT NULL,
+  source ENUM('manual', 'csv_import') NOT NULL DEFAULT 'manual',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT uniq_capture_user_pool_date UNIQUE (user_id, pool_id, capture_date),
+  CONSTRAINT fk_captures_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_captures_pool FOREIGN KEY (pool_id) REFERENCES pools(id) ON DELETE CASCADE
 );
-
-INSERT INTO users (username, password_plain)
-VALUES ('Andres', 'Andres$'), ('Sandra', 'Sandra$')
-ON CONFLICT (username) DO UPDATE SET password_plain = EXCLUDED.password_plain;
-
-INSERT INTO pools (user_id, name)
-SELECT id, 'rojo' FROM users WHERE username = 'Andres'
-ON CONFLICT (user_id, name) DO UPDATE SET active = TRUE;
-
-INSERT INTO pools (user_id, name)
-SELECT id, 'negro' FROM users WHERE username = 'Andres'
-ON CONFLICT (user_id, name) DO UPDATE SET active = TRUE;
-
-INSERT INTO pools (user_id, name)
-SELECT id, 'UNI' FROM users WHERE username = 'Sandra'
-ON CONFLICT (user_id, name) DO UPDATE SET active = TRUE;
