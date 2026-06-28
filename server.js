@@ -57,6 +57,26 @@ async function query(sql, params = []) {
   return rows;
 }
 
+async function columnExists(tableName, columnName) {
+  const rows = await query(
+    `
+      SELECT COLUMN_NAME
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?
+    `,
+    [tableName, columnName]
+  );
+  return rows.length > 0;
+}
+
+async function addColumnIfMissing(tableName, columnName, definition) {
+  if (!(await columnExists(tableName, columnName))) {
+    await query(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+  }
+}
+
 async function initDb() {
   await query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -92,6 +112,18 @@ async function initDb() {
       CONSTRAINT fk_captures_pool FOREIGN KEY (pool_id) REFERENCES pools(id) ON DELETE CASCADE
     )
   `);
+
+  await addColumnIfMissing("users", "password_plain", "password_plain VARCHAR(120) NULL");
+  await addColumnIfMissing("users", "created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  await addColumnIfMissing("pools", "active", "active BOOLEAN NOT NULL DEFAULT TRUE");
+  await addColumnIfMissing("pools", "created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  await addColumnIfMissing("captures", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'");
+  await addColumnIfMissing("captures", "created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  await addColumnIfMissing(
+    "captures",
+    "updated_at",
+    "updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+  );
 
   await query(
     `
