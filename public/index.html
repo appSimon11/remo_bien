@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pool Gains Console</title>
+    <link rel="stylesheet" href="./styles.css?v=goal-probability-1" />
+  </head>
+  <body>
+    <div class="login-screen" id="loginScreen">
+      <form class="login-panel" id="loginForm">
+        <div class="brand login-brand">
+          <div class="brand-mark">P</div>
+          <div>
+            <strong>Pool Console</strong>
+            <span>Acceso privado</span>
+          </div>
+        </div>
+        <label>
+          Usuario
+          <input id="loginUser" name="user" autocomplete="username" required />
+        </label>
+        <label>
+          Contraseña
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-button" type="submit">Entrar</button>
+        <div class="upload-result" id="loginError">Ingresa tus credenciales.</div>
+      </form>
+    </div>
+
+    <div class="app-shell auth-hidden" id="appShell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">P</div>
+          <div>
+            <strong>Pool Console</strong>
+            <span>Ganancia diaria</span>
+          </div>
+        </div>
+        <nav class="nav">
+          <a href="#capture" class="nav-link active" data-section-link="capture"><span>▦</span> Captura</a>
+          <a href="#stats" class="nav-link" data-section-link="stats"><span>⌁</span> Estadísticas</a>
+          <a href="#forecast" class="nav-link" data-section-link="forecast"><span>↗</span> Forecast</a>
+          <a href="#database" class="nav-link" data-section-link="database"><span>⇅</span> Base de datos</a>
+        </nav>
+        <div class="side-status">
+          <span class="pulse"></span>
+          <div>
+            <strong id="storageStatus">Base local activa</strong>
+            <span id="recordCount">0 registros</span>
+          </div>
+        </div>
+        <div class="user-panel">
+          <span>Usuario</span>
+          <strong id="currentUserName">--</strong>
+          <button class="ghost-button" id="logoutButton" type="button">Salir</button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Daily Yield Intelligence</p>
+            <h1>Control de ganancias por pool</h1>
+          </div>
+          <div class="today-pill">
+            <span>Hoy</span>
+            <strong id="todayText">--</strong>
+          </div>
+        </header>
+
+        <section id="capture" class="page-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Primera sección</p>
+              <h2>Captura de ganancia diaria</h2>
+            </div>
+            <button class="ghost-button" id="addPoolButton" type="button">+ Pool</button>
+          </div>
+
+          <div class="grid capture-grid">
+            <form class="panel capture-panel" id="captureForm">
+              <div class="form-row split">
+                <label>
+                  Fecha de captura
+                  <input id="captureDate" name="date" type="date" required />
+                </label>
+                <div class="save-note">
+                  <strong>Regla automática</strong>
+                  <span>Si el acumulado baja contra el registro anterior, se marca como pool modificado.</span>
+                </div>
+              </div>
+              <div id="poolInputs" class="pool-inputs"></div>
+              <div class="capture-actions">
+                <button class="primary-button" type="submit">Guardar captura</button>
+              </div>
+              <div class="upload-result" id="captureStatus">Captura manual o automática lista.</div>
+            </form>
+
+            <div class="panel today-panel">
+              <div class="metric-head">
+                <span>Hoy vs registro anterior</span>
+                <strong id="totalComparisonIcon" class="comparison neutral">•</strong>
+              </div>
+              <div class="hero-number" id="todayTotalGain">$0.00</div>
+              <div class="delta-line" id="todayDeltaText">Sin registros todavía</div>
+              <div class="mini-table" id="todayBreakdown"></div>
+              <div class="goal-probability" id="goalProbability"></div>
+            </div>
+          </div>
+          <div class="panel year-map-panel" id="yearThresholdMap"></div>
+        </section>
+
+        <section id="stats" class="page-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Segunda sección</p>
+              <h2>Dashboard de estadísticas</h2>
+            </div>
+            <div class="range-toggle" role="group" aria-label="Rango de estadísticas">
+              <button type="button" class="active" data-range="all">Todo</button>
+              <button type="button" data-range="30">30d</button>
+              <button type="button" data-range="7">7d</button>
+            </div>
+          </div>
+          <div class="panel total-panel" id="realTotalStats"></div>
+          <div class="panel total-panel" id="combinedStats"></div>
+          <div class="pool-cards" id="poolStats"></div>
+        </section>
+
+        <section id="forecast" class="page-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Tercera sección</p>
+              <h2>Pronóstico</h2>
+            </div>
+          </div>
+          <div class="forecast-grid" id="forecastGrid"></div>
+        </section>
+
+        <section id="database" class="page-section">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Cuarta sección</p>
+              <h2>Base de datos e importación batch</h2>
+            </div>
+          </div>
+          <div class="grid db-grid">
+            <div class="panel instructions">
+              <h3>Cómo preparar el archivo</h3>
+              <ol>
+                <li>Descarga la plantilla compatible con Excel o copia el ejemplo de abajo.</li>
+                <li>Ábrelo en Excel, Numbers o Google Sheets.</li>
+                <li>Usa estas columnas: <code>date,pool,total</code>. También acepta <code>fecha,pool,acumulado</code>.</li>
+                <li>Escribe la fecha como <code>AAAA-MM-DD</code>, el nombre del pool y el acumulado total visible del día.</li>
+                <li>Guarda como CSV. Puede venir separado por coma, punto y coma o tabulador.</li>
+                <li>Sube el archivo o pega el contenido en la caja. La app previsualiza antes de guardar.</li>
+              </ol>
+            </div>
+            <div class="panel db-actions">
+              <button class="primary-button" id="downloadCsv" type="button">Descargar base CSV</button>
+              <button class="ghost-button" id="downloadBackup" type="button">Exportar respaldo completo</button>
+              <button class="ghost-button" id="downloadTemplate" type="button">Descargar plantilla CSV</button>
+              <label class="upload-box">
+                <input id="csvUpload" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" />
+                <span>Subir archivo CSV</span>
+                <small>Se mezcla con los datos actuales y recalcula todo.</small>
+              </label>
+              <textarea id="csvPasteBox" class="csv-paste-box" spellcheck="false" placeholder="Pega aqui tu CSV, por ejemplo:&#10;date,pool,total&#10;2026-05-23,rojo,1000&#10;2026-05-23,negro,850"></textarea>
+              <div class="paste-actions">
+                <button class="ghost-button" id="fillCsvExample" type="button">Poner ejemplo</button>
+                <button class="primary-button" id="previewPastedCsv" type="button">Previsualizar texto</button>
+              </div>
+              <div class="upload-result" id="uploadResult">Listo para importar.</div>
+              <div class="import-preview auth-hidden" id="importPreview">
+                <button class="primary-button" id="confirmImport" type="button">Confirmar importación</button>
+                <button class="ghost-button" id="cancelImport" type="button">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel history-panel">
+            <div class="card-top">
+              <div>
+                <p class="eyebrow">Historial editable</p>
+                <strong>Capturas guardadas</strong>
+              </div>
+              <span class="muted">Editar o borrar recalcula todo</span>
+            </div>
+            <div class="history-table" id="historyTable"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js?v=goal-probability-1"></script>
+  </body>
+</html>
