@@ -77,6 +77,12 @@ async function addColumnIfMissing(tableName, columnName, definition) {
   }
 }
 
+async function makeColumnNullableIfExists(tableName, columnName, definition) {
+  if (await columnExists(tableName, columnName)) {
+    await query(`ALTER TABLE ${tableName} MODIFY COLUMN ${definition}`);
+  }
+}
+
 async function initDb() {
   await query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -115,6 +121,8 @@ async function initDb() {
 
   await addColumnIfMissing("users", "password_plain", "password_plain VARCHAR(120) NULL");
   await addColumnIfMissing("users", "created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
+  await makeColumnNullableIfExists("users", "password_salt", "password_salt VARCHAR(64) NULL");
+  await makeColumnNullableIfExists("users", "password_hash", "password_hash VARCHAR(128) NULL");
   await addColumnIfMissing("pools", "active", "active BOOLEAN NOT NULL DEFAULT TRUE");
   await addColumnIfMissing("pools", "created_at", "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP");
   await addColumnIfMissing("captures", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'");
