@@ -3,196 +3,310 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pool Gains Console</title>
-    <link rel="stylesheet" href="./styles.css?v=goal-probability-1" />
+    <title>Remo2</title>
+    <link rel="stylesheet" href="/app.css?v=remo2-mysql-v8" />
   </head>
   <body>
-    <div class="login-screen" id="loginScreen">
-      <form class="login-panel" id="loginForm">
-        <div class="brand login-brand">
-          <div class="brand-mark">P</div>
+    <section class="auth-screen" id="authScreen">
+      <form class="auth-card" id="authForm">
+        <div class="brand compact">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" role="img">
+              <circle cx="31" cy="15" r="6"></circle>
+              <path d="M23 25 L35 25 L43 37"></path>
+              <path d="M32 27 L21 39"></path>
+              <path d="M37 30 L51 22"></path>
+              <path d="M13 47 C25 53 39 53 52 47"></path>
+              <path d="M18 42 L49 42"></path>
+            </svg>
+          </div>
           <div>
-            <strong>Pool Console</strong>
-            <span>Acceso privado</span>
+            <h1>Remo2</h1>
+            <p>Entrenamientos privados por usuario.</p>
           </div>
         </div>
-        <label>
-          Usuario
-          <input id="loginUser" name="user" autocomplete="username" required />
-        </label>
-        <label>
-          Contraseña
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
-        </label>
-        <button class="primary-button" type="submit">Entrar</button>
-        <div class="upload-result" id="loginError">Ingresa tus credenciales.</div>
+        <div class="field">
+          <label for="authUsername">Usuario</label>
+          <input id="authUsername" autocomplete="username" value="a" required />
+        </div>
+        <div class="field">
+          <label for="authPassword">Contraseña</label>
+          <input id="authPassword" type="password" autocomplete="current-password" value="a" required />
+        </div>
+        <div class="segmented">
+          <button class="save-button" id="loginButton" type="submit">Entrar</button>
+          <button class="secondary-button" id="registerButton" type="button">Crear usuario</button>
+        </div>
+        <p class="form-message" id="authMessage" role="status"></p>
       </form>
-    </div>
+    </section>
 
-    <div class="app-shell auth-hidden" id="appShell">
-      <aside class="sidebar">
+    <div class="app-shell is-hidden" id="appShell">
+      <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">P</div>
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" role="img">
+              <circle cx="31" cy="15" r="6"></circle>
+              <path d="M23 25 L35 25 L43 37"></path>
+              <path d="M32 27 L21 39"></path>
+              <path d="M37 30 L51 22"></path>
+              <path d="M13 47 C25 53 39 53 52 47"></path>
+              <path d="M18 42 L49 42"></path>
+            </svg>
+          </div>
           <div>
-            <strong>Pool Console</strong>
-            <span>Ganancia diaria</span>
+            <h1>Remo2</h1>
+            <p>Rutinas, kilómetros, paladas, calorías y tiempo.</p>
           </div>
         </div>
-        <nav class="nav">
-          <a href="#capture" class="nav-link active" data-section-link="capture"><span>▦</span> Captura</a>
-          <a href="#stats" class="nav-link" data-section-link="stats"><span>⌁</span> Estadísticas</a>
-          <a href="#forecast" class="nav-link" data-section-link="forecast"><span>↗</span> Forecast</a>
-          <a href="#database" class="nav-link" data-section-link="database"><span>⇅</span> Base de datos</a>
-        </nav>
-        <div class="side-status">
-          <span class="pulse"></span>
-          <div>
-            <strong id="storageStatus">Base local activa</strong>
-            <span id="recordCount">0 registros</span>
-          </div>
-        </div>
-        <div class="user-panel">
-          <span>Usuario</span>
-          <strong id="currentUserName">--</strong>
-          <button class="ghost-button" id="logoutButton" type="button">Salir</button>
-        </div>
-      </aside>
-
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Daily Yield Intelligence</p>
-            <h1>Control de ganancias por pool</h1>
-          </div>
-          <div class="today-pill">
-            <span>Hoy</span>
-            <strong id="todayText">--</strong>
-          </div>
-        </header>
-
-        <section id="capture" class="page-section">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Primera sección</p>
-              <h2>Captura de ganancia diaria</h2>
+        <div class="top-actions">
+          <div class="goal-progress" aria-label="Progreso anual">
+            <div class="goal-progress-meta">
+              <span>Meta anual</span>
+              <strong id="goalProgressLabel">0%</strong>
             </div>
-            <button class="ghost-button" id="addPoolButton" type="button">+ Pool</button>
+            <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
+            <div class="goal-needed" id="goalNeededDaily">Necesario hoy: 0 km/día</div>
           </div>
+          <button class="secondary-button small" id="logoutButton" type="button">Salir</button>
+        </div>
+      </header>
 
-          <div class="grid capture-grid">
-            <form class="panel capture-panel" id="captureForm">
-              <div class="form-row split">
-                <label>
-                  Fecha de captura
-                  <input id="captureDate" name="date" type="date" required />
-                </label>
-                <div class="save-note">
-                  <strong>Regla automática</strong>
-                  <span>Si el acumulado baja contra el registro anterior, se marca como pool modificado.</span>
+      <section class="app-frame">
+        <aside>
+          <div class="nav-title" id="userLabel">Usuario</div>
+          <button class="nav-button is-active" data-screen="session" type="button"><span>+</span>Guardar sesión</button>
+          <button class="nav-button" data-screen="history" type="button"><span>≡</span>Historial</button>
+          <button class="nav-button" data-screen="stats" type="button"><span>▥</span>Estadísticas</button>
+          <button class="nav-button" data-screen="forecast" type="button"><span>↗</span>Histórico / Forecast</button>
+          <button class="nav-button" data-screen="import" type="button"><span>⇅</span>Importar / Exportar</button>
+        </aside>
+
+        <main>
+          <section class="screen is-active" data-view="session">
+            <div class="screen-header">
+              <div>
+                <h2>Nueva sesión</h2>
+                <p>Captura tu entrenamiento. Cada usuario guarda sus propios registros.</p>
+              </div>
+              <div class="date-pill" id="todayLabel">Hoy</div>
+            </div>
+
+            <div class="entry-grid">
+              <form class="panel form-card" id="sessionForm">
+                <input id="editingSessionId" type="hidden" />
+                <div class="today-goal-card" id="todayGoalCard">
+                  <span>Meta de hoy</span>
+                  <strong id="todayGoalValue">0 km</strong>
+                  <div class="today-goal-result" id="todayGoalResult">Captura tu sesión</div>
+                </div>
+                <div class="field">
+                  <label for="sessionDate">Día</label>
+                  <input id="sessionDate" name="sessionDate" type="date" />
+                </div>
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="kilometers">Kilómetros</label>
+                    <input id="kilometers" type="number" inputmode="decimal" step="0.01" min="0" placeholder="8.40" required />
+                  </div>
+                  <div class="field">
+                    <label for="strokes">Paladas</label>
+                    <input id="strokes" type="number" inputmode="numeric" min="0" placeholder="6420" required />
+                  </div>
+                  <div class="field">
+                    <label for="calories">Calorías</label>
+                    <input id="calories" type="number" inputmode="decimal" step="0.01" min="0" placeholder="320" required />
+                  </div>
+                  <div class="field">
+                    <label for="durationMinutes">Tiempo</label>
+                    <input id="durationMinutes" type="number" inputmode="numeric" min="0" placeholder="42" required />
+                  </div>
+                </div>
+                <div class="button-row">
+                  <button class="save-button" id="sessionSubmitButton" type="submit">Guardar sesión</button>
+                  <button class="secondary-button" id="cancelEditButton" type="button">Cancelar</button>
+                </div>
+                <p class="form-message" id="formMessage" role="status"></p>
+              </form>
+
+              <div class="panel session-preview">
+                <div class="metric-row"><span>Sesiones del año</span><strong id="totalSessions">0</strong></div>
+                <div class="metric-row"><span>Kilómetros del año</span><strong id="yearKm">0 km</strong></div>
+                <div class="metric-row"><span>Tiempo del año</span><strong id="yearTime">0 min</strong></div>
+                <div class="metric-row"><span>Ritmo 500m</span><strong id="yearPace">0:00</strong></div>
+                <div class="metric-row"><span>Paladas/min</span><strong id="yearSpm">0</strong></div>
+                <div class="metric-row"><span>Calorías/km</span><strong id="yearCaloriesKm">0</strong></div>
+                <div class="probability-card" id="goalProbabilityCard">
+                  <span>Probabilidad de cumplir meta</span>
+                  <strong id="goalProbabilityValue">--</strong>
+                  <div class="probability-track"><div id="goalProbabilityFill"></div></div>
+                  <p id="goalProbabilityText">Agrega histórico para calcularla.</p>
                 </div>
               </div>
-              <div id="poolInputs" class="pool-inputs"></div>
-              <div class="capture-actions">
-                <button class="primary-button" type="submit">Guardar captura</button>
-              </div>
-              <div class="upload-result" id="captureStatus">Captura manual o automática lista.</div>
-            </form>
+            </div>
+          </section>
 
-            <div class="panel today-panel">
-              <div class="metric-head">
-                <span>Hoy vs registro anterior</span>
-                <strong id="totalComparisonIcon" class="comparison neutral">•</strong>
-              </div>
-              <div class="hero-number" id="todayTotalGain">$0.00</div>
-              <div class="delta-line" id="todayDeltaText">Sin registros todavía</div>
-              <div class="mini-table" id="todayBreakdown"></div>
-              <div class="goal-probability" id="goalProbability"></div>
-            </div>
-          </div>
-          <div class="panel year-map-panel" id="yearThresholdMap"></div>
-        </section>
-
-        <section id="stats" class="page-section">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Segunda sección</p>
-              <h2>Dashboard de estadísticas</h2>
-            </div>
-            <div class="range-toggle" role="group" aria-label="Rango de estadísticas">
-              <button type="button" class="active" data-range="all">Todo</button>
-              <button type="button" data-range="30">30d</button>
-              <button type="button" data-range="7">7d</button>
-            </div>
-          </div>
-          <div class="panel total-panel" id="realTotalStats"></div>
-          <div class="panel total-panel" id="combinedStats"></div>
-          <div class="pool-cards" id="poolStats"></div>
-        </section>
-
-        <section id="forecast" class="page-section">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Tercera sección</p>
-              <h2>Pronóstico</h2>
-            </div>
-          </div>
-          <div class="forecast-grid" id="forecastGrid"></div>
-        </section>
-
-        <section id="database" class="page-section">
-          <div class="section-header">
-            <div>
-              <p class="eyebrow">Cuarta sección</p>
-              <h2>Base de datos e importación batch</h2>
-            </div>
-          </div>
-          <div class="grid db-grid">
-            <div class="panel instructions">
-              <h3>Cómo preparar el archivo</h3>
-              <ol>
-                <li>Descarga la plantilla compatible con Excel o copia el ejemplo de abajo.</li>
-                <li>Ábrelo en Excel, Numbers o Google Sheets.</li>
-                <li>Usa estas columnas: <code>date,pool,total</code>. También acepta <code>fecha,pool,acumulado</code>.</li>
-                <li>Escribe la fecha como <code>AAAA-MM-DD</code>, el nombre del pool y el acumulado total visible del día.</li>
-                <li>Guarda como CSV. Puede venir separado por coma, punto y coma o tabulador.</li>
-                <li>Sube el archivo o pega el contenido en la caja. La app previsualiza antes de guardar.</li>
-              </ol>
-            </div>
-            <div class="panel db-actions">
-              <button class="primary-button" id="downloadCsv" type="button">Descargar base CSV</button>
-              <button class="ghost-button" id="downloadBackup" type="button">Exportar respaldo completo</button>
-              <button class="ghost-button" id="downloadTemplate" type="button">Descargar plantilla CSV</button>
-              <label class="upload-box">
-                <input id="csvUpload" type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" />
-                <span>Subir archivo CSV</span>
-                <small>Se mezcla con los datos actuales y recalcula todo.</small>
-              </label>
-              <textarea id="csvPasteBox" class="csv-paste-box" spellcheck="false" placeholder="Pega aqui tu CSV, por ejemplo:&#10;date,pool,total&#10;2026-05-23,rojo,1000&#10;2026-05-23,negro,850"></textarea>
-              <div class="paste-actions">
-                <button class="ghost-button" id="fillCsvExample" type="button">Poner ejemplo</button>
-                <button class="primary-button" id="previewPastedCsv" type="button">Previsualizar texto</button>
-              </div>
-              <div class="upload-result" id="uploadResult">Listo para importar.</div>
-              <div class="import-preview auth-hidden" id="importPreview">
-                <button class="primary-button" id="confirmImport" type="button">Confirmar importación</button>
-                <button class="ghost-button" id="cancelImport" type="button">Cancelar</button>
-              </div>
-            </div>
-          </div>
-          <div class="panel history-panel">
-            <div class="card-top">
+          <section class="screen" data-view="history">
+            <div class="screen-header">
               <div>
-                <p class="eyebrow">Historial editable</p>
-                <strong>Capturas guardadas</strong>
+                <h2>Historial</h2>
+                <p>Revisa, corrige o elimina sesiones guardadas.</p>
               </div>
-              <span class="muted">Editar o borrar recalcula todo</span>
+              <button class="secondary-button" id="refreshSessionsButton" type="button">Actualizar</button>
             </div>
-            <div class="history-table" id="historyTable"></div>
-          </div>
-        </section>
-      </main>
+            <div class="panel history-table-card">
+              <div class="chart-title"><span>Sesiones recientes</span><strong id="sessionsCount">0</strong></div>
+              <div class="sessions-table" id="sessionsTable"></div>
+            </div>
+          </section>
+
+          <section class="screen" data-view="stats">
+            <div class="screen-header">
+              <div>
+                <h2>Estadísticas</h2>
+                <p>Explora día, semana calendario, mes y año.</p>
+              </div>
+            </div>
+
+            <div class="panel year-map-card">
+              <div class="chart-title"><span>Mapa del año</span><strong id="yearMapTitle">365 días</strong></div>
+              <div class="year-map" id="yearMap"></div>
+              <div class="year-map-legend">
+                <span><i class="legend-done"></i> Con sesión/base</span>
+                <span><i class="legend-missed"></i> Sin sesión</span>
+                <span><i class="legend-future"></i> Próximos</span>
+              </div>
+            </div>
+
+            <div class="period-grid">
+              <article class="panel period-card is-active" data-period-card="day">
+                <div class="period-head">
+                  <button class="icon-button" data-period="day" data-step="-1" type="button" aria-label="Día anterior">‹</button>
+                  <div><span>Día</span><strong id="dayTitle">Hoy</strong></div>
+                  <button class="icon-button" data-period="day" data-step="1" type="button" aria-label="Día siguiente">›</button>
+                </div>
+                <div class="period-metrics" id="daySummary"></div>
+              </article>
+              <article class="panel period-card" data-period-card="week">
+                <div class="period-head">
+                  <button class="icon-button" data-period="week" data-step="-1" type="button" aria-label="Semana anterior">‹</button>
+                  <div><span>Semana</span><strong id="weekTitle">Semana actual</strong></div>
+                  <button class="icon-button" data-period="week" data-step="1" type="button" aria-label="Semana siguiente">›</button>
+                </div>
+                <div class="period-metrics" id="weekSummary"></div>
+              </article>
+              <article class="panel period-card" data-period-card="month">
+                <div class="period-head">
+                  <button class="icon-button" data-period="month" data-step="-1" type="button" aria-label="Mes anterior">‹</button>
+                  <div><span>Mes</span><strong id="monthTitle">Mes actual</strong></div>
+                  <button class="icon-button" data-period="month" data-step="1" type="button" aria-label="Mes siguiente">›</button>
+                </div>
+                <div class="period-metrics" id="monthSummary"></div>
+              </article>
+              <article class="panel period-card" data-period-card="year">
+                <div class="period-head">
+                  <button class="icon-button" data-period="year" data-step="-1" type="button" aria-label="Año anterior">‹</button>
+                  <div><span>Año</span><strong id="yearTitle">Año actual</strong></div>
+                  <button class="icon-button" data-period="year" data-step="1" type="button" aria-label="Año siguiente">›</button>
+                </div>
+                <div class="period-metrics" id="yearSummary"></div>
+              </article>
+            </div>
+
+            <div class="graphs-header"><div><span>Gráficas</span><strong id="activePeriodTitle">Día</strong></div></div>
+            <div class="graphs-grid">
+              <article class="panel chart-panel"><div class="chart-title"><span>Kilómetros</span><strong id="kilometersTotal">0 km</strong></div><div class="chart" id="kilometersChart"></div></article>
+              <article class="panel chart-panel"><div class="chart-title"><span>Paladas</span><strong id="strokesTotal">0</strong></div><div class="chart" id="strokesChart"></div></article>
+              <article class="panel chart-panel"><div class="chart-title"><span>Calorías</span><strong id="caloriesTotal">0</strong></div><div class="chart" id="caloriesChart"></div></article>
+              <article class="panel chart-panel"><div class="chart-title"><span>Tiempo</span><strong id="timeTotal">0 min</strong></div><div class="chart" id="timeChart"></div></article>
+            </div>
+          </section>
+
+          <section class="screen" data-view="forecast">
+            <div class="screen-header">
+              <div>
+                <h2>Histórico / Forecast</h2>
+                <p>Guarda años anteriores y define tu base inicial.</p>
+              </div>
+            </div>
+            <div class="forecast-grid">
+              <form class="panel form-card" id="historyForm">
+                <h3>Año anterior</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="historyYear">Año</label><input id="historyYear" type="number" inputmode="numeric" placeholder="2025" required /></div>
+                  <div class="field"><label for="historyKilometers">Kilómetros</label><input id="historyKilometers" type="number" inputmode="decimal" step="0.01" min="0" placeholder="1200" required /></div>
+                  <div class="field"><label for="historyMinutes">Tiempo</label><input id="historyMinutes" type="number" inputmode="numeric" min="0" placeholder="7200" required /></div>
+                </div>
+                <button class="save-button" type="submit">Guardar histórico</button>
+              </form>
+
+              <form class="panel form-card" id="baselineForm">
+                <h3>Base del año actual</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="seedDate">Fecha de corte</label><input id="seedDate" type="date" required /></div>
+                  <div class="field"><label for="initialKilometers">Kilómetros acumulados</label><input id="initialKilometers" type="number" inputmode="decimal" step="0.01" min="0" placeholder="200" required /></div>
+                  <div class="field"><label for="initialMinutes">Tiempo acumulado</label><input id="initialMinutes" type="number" inputmode="numeric" min="0" placeholder="500" required /></div>
+                  <div class="field"><label for="resetConfirm">Confirmación</label><input id="resetConfirm" placeholder="BORRAR" /></div>
+                </div>
+                <div class="button-row">
+                  <button class="save-button" type="submit">Guardar base y borrar</button>
+                  <button class="danger-button" id="resetYearButton" type="button">Reset año</button>
+                </div>
+                <p class="form-message" id="forecastMessage" role="status"></p>
+              </form>
+            </div>
+
+            <div class="forecast-summary">
+              <article class="panel forecast-card"><span>Meta del año</span><strong id="goalKilometers">0 km</strong></article>
+              <article class="panel forecast-card"><span>Avance actual</span><strong id="currentKilometers">0 km</strong></article>
+              <article class="panel forecast-card"><span>Faltan</span><strong id="remainingKilometers">0 km</strong></article>
+              <article class="panel forecast-card"><span>Necesitas por día</span><strong id="requiredDailyKilometers">0 km</strong></article>
+              <article class="panel forecast-card"><span>Velocidad promedio</span><strong id="forecastAverageSpeed">0 km/h</strong></article>
+              <article class="panel forecast-card"><span>Promedio diario</span><strong id="forecastDailyAverage">0 km</strong></article>
+            </div>
+            <div class="panel history-table-card">
+              <div class="chart-title"><span>Años guardados</span><strong id="historyCount">0</strong></div>
+              <div class="history-table" id="historyTable"></div>
+            </div>
+          </section>
+
+          <section class="screen" data-view="import">
+            <div class="screen-header">
+              <div>
+                <h2>Importar / Exportar</h2>
+                <p>Descarga una plantilla CSV compatible con Excel, previsualiza y guarda solo si todo está bien.</p>
+              </div>
+            </div>
+            <div class="forecast-grid">
+              <div class="panel form-card">
+                <h3>Exportar y plantilla</h3>
+                <div class="button-stack">
+                  <a class="save-button link-button" href="/api/sessions/export.csv">Exportar mis sesiones</a>
+                  <a class="secondary-button link-button" href="/api/import-template.csv">Descargar plantilla</a>
+                </div>
+              </div>
+              <form class="panel form-card" id="importForm">
+                <h3>Importar CSV</h3>
+                <div class="field">
+                  <label for="importFile">Archivo CSV</label>
+                  <input id="importFile" type="file" accept=".csv,text/csv" required />
+                </div>
+                <div class="button-row">
+                  <button class="save-button" type="submit">Previsualizar</button>
+                  <button class="secondary-button" id="commitImportButton" type="button" disabled>Guardar importación</button>
+                </div>
+                <p class="form-message" id="importMessage" role="status"></p>
+              </form>
+            </div>
+            <div class="panel history-table-card">
+              <div class="chart-title"><span>Previsualización</span><strong id="importCount">0 filas</strong></div>
+              <div class="sessions-table" id="importPreview"></div>
+            </div>
+          </section>
+        </main>
+      </section>
     </div>
 
-    <script src="./app.js?v=goal-probability-1"></script>
+    <script src="/app.js?v=remo2-mysql-v8" type="module"></script>
   </body>
 </html>

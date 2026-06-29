@@ -1,973 +1,601 @@
-const USER_DEFAULT_POOLS = {
-  Andres: ["rojo", "negro"],
-  Sandra: ["UNI"]
-};
-const COLORS = ["#16d9f4", "#ff4fa1", "#2d7cff", "#27e49f", "#ffd166", "#9b7bff"];
-const DAILY_RED_MAX = 40;
-const DAILY_YELLOW_MAX = 50;
-const DAILY_GOAL = DAILY_YELLOW_MAX + 1;
-const sections = ["capture", "stats", "forecast", "database"];
+const formatter = new Intl.DateTimeFormat("es-MX", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
 
-let activeRange = "all";
-let currentUser = null;
-let rowsCache = [];
-let pendingImportRows = [];
+const periods = ["day", "week", "month", "year"];
+const periodLabels = { day: "Día", week: "Semana", month: "Mes", year: "Año" };
+const offsets = { day: 0, week: 0, month: 0, year: 0 };
+const periodData = {};
+
+let activePeriod = "day";
+let requiredTodayKilometers = 0;
+let importRows = [];
+
+const today = new Date();
+const todayIso = [
+  today.getFullYear(),
+  String(today.getMonth() + 1).padStart(2, "0"),
+  String(today.getDate()).padStart(2, "0"),
+].join("-");
 
 const $ = (selector) => document.querySelector(selector);
-const money = new Intl.NumberFormat("es-MX", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2
-});
-const dateLabel = new Intl.DateTimeFormat("es-MX", {
-  weekday: "short",
-  day: "2-digit",
-  month: "short",
-  year: "numeric"
-});
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
-
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "No se pudo completar la operación.");
-  return data;
-}
-
-function loadRows() {
-  return rowsCache;
-}
-
-async function refreshRows() {
-  const data = await api("/api/rows");
-  rowsCache = data.rows || [];
-  renderAll();
-}
-
-function defaultPools() {
-  return USER_DEFAULT_POOLS[currentUser?.username] || [];
-}
-
-function normalizePoolName(value) {
-  return String(value || "").trim().replace(/\s+/g, " ");
-}
-
-function sortRows(rows) {
-  return [...rows].sort((a, b) => a.date.localeCompare(b.date) || a.pool.localeCompare(b.pool));
-}
-
-function round2(value) {
-  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-}
-
-function getPools(rows) {
-  const names = [...new Set(rows.map((row) => row.pool))];
-  return names.length ? names : defaultPools();
-}
-
-function latestRowsByDate(rows, date) {
-  return rows.filter((row) => row.date === date);
-}
-
-function previousDate(rows, date) {
-  return [...new Set(rows.map((row) => row.date).filter((item) => item < date))].sort().at(-1);
-}
-
-function totalForDate(rows, date) {
-  return latestRowsByDate(rows, date).reduce((sum, row) => sum + row.daily, 0);
-}
-
-function renderPoolInputs() {
-  const rows = loadRows();
-  const pools = getPools(rows);
-  const latestByPool = new Map();
-  for (const row of rows) latestByPool.set(row.pool, row.total);
-
-  $("#poolInputs").innerHTML = pools.map((pool, index) => renderPoolInputRow(pool, latestByPool.get(pool), index)).join("");
-}
-
-function renderPoolInputRow(pool, total = "", index = 0) {
-  return `
-    <div class="pool-input-row">
-      <label>
-        Pool
-        <input name="pool" value="${escapeHtml(pool)}" required />
-      </label>
-      <label>
-        Ganancia acumulada
-        <input name="total" type="number" step="0.01" min="0" value="${total ?? ""}" required />
-      </label>
-      <button class="icon-button" type="button" title="Quitar pool" data-remove-pool="${index}">×</button>
-    </div>
-  `;
-}
-
-function renderCapture() {
-  const rows = loadRows();
-  const date = $("#captureDate").value || todayISO();
-  const todayRows = latestRowsByDate(rows, date);
-  const prevDate = previousDate(rows, date);
-  const todayTotal = totalForDate(rows, date);
-  const previousTotal = prevDate ? totalForDate(rows, prevDate) : 0;
-  const diff = todayTotal - previousTotal;
-
-  $("#todayTotalGain").textContent = money.format(todayTotal);
-  const icon = $("#totalComparisonIcon");
-  icon.className = "comparison neutral";
-  icon.textContent = "•";
-
-  if (todayRows.length && prevDate) {
-    icon.className = `comparison ${diff >= 0 ? "up" : "down"}`;
-    icon.textContent = diff >= 0 ? "✓" : "×";
-    $("#todayDeltaText").textContent = `${diff >= 0 ? "Arriba" : "Abajo"} ${money.format(Math.abs(diff))} contra ${prevDate}`;
-  } else if (todayRows.length) {
-    $("#todayDeltaText").textContent = "Primer registro disponible para comparar.";
-  } else {
-    $("#todayDeltaText").textContent = "Sin captura para esta fecha.";
-  }
-
-  $("#todayBreakdown").innerHTML = todayRows.length
-    ? todayRows
-        .map(
-          (row) => `
-            <div class="mini-row">
-              <span>${escapeHtml(row.pool)}</span>
-              <strong>${money.format(row.daily)}</strong>
-              <span class="muted">Acum. ${money.format(row.adjustedTotal ?? row.total)}</span>
-              <span class="${row.modified ? "reset-tag" : "muted"}">${row.modified ? "Pool modificado" : "Normal"}</span>
-            </div>
-          `
-        )
-        .join("")
-    : `<div class="empty-state">Guarda una captura para ver el desglose del día.</div>`;
-  renderGoalProbability(rows, date, todayTotal);
-  renderYearThresholdMap(rows, date);
-}
-
-function renderGoalProbability(rows, selectedDate, selectedTotal) {
-  const probability = goalProbability(rows, selectedDate);
-  const currentStatus =
-    selectedTotal >= DAILY_GOAL
-      ? `Hoy ya supera la meta de ${money.format(DAILY_GOAL)}.`
-      : selectedTotal > 0
-        ? `Hoy faltan ${money.format(DAILY_GOAL - selectedTotal)} para llegar a la meta.`
-        : `La meta diaria es ${money.format(DAILY_GOAL)}.`;
-
-  if (!probability.available) {
-    $("#goalProbability").innerHTML = `
-      <div class="probability-top">
-        <span>Probabilidad de cumplir meta</span>
-        <strong>--</strong>
-      </div>
-      <p>${currentStatus} Aún faltan más días de historial para estimar una probabilidad.</p>
-    `;
-    return;
-  }
-
-  $("#goalProbability").innerHTML = `
-    <div class="probability-top">
-      <span>Probabilidad de cumplir meta</span>
-      <strong>${probability.percent.toFixed(0)}%</strong>
-    </div>
-    <div class="probability-track" aria-label="Probabilidad de cumplir meta">
-      <div style="width: ${probability.percent}%"></div>
-    </div>
-    <p>${currentStatus} Historial: ${probability.successes} de ${probability.days} días llegaron a ${money.format(DAILY_GOAL)} o más. ${probability.signal}</p>
-  `;
-}
-
-function goalProbability(rows, selectedDate) {
-  const historical = dailySeries(rows).filter((item) => item.date < selectedDate);
-  if (historical.length < 3) return { available: false };
-
-  const successes = historical.filter((item) => item.value >= DAILY_GOAL).length;
-  const baseRate = successes / historical.length;
-  const recent = historical.slice(-14);
-  const recentSuccesses = recent.filter((item) => item.value >= DAILY_GOAL).length;
-  const recentRate = recent.length ? recentSuccesses / recent.length : baseRate;
-  const percent = Math.max(0, Math.min((baseRate * 0.7 + recentRate * 0.3) * 100, 100));
-  const signal =
-    recent.length >= 5 && recentRate > baseRate
-      ? "La racha reciente viene mejor que el promedio."
-      : recent.length >= 5 && recentRate < baseRate
-        ? "La racha reciente viene más baja que el promedio."
-        : "La racha reciente está cerca del promedio.";
-
-  return {
-    available: true,
-    percent,
-    successes,
-    days: historical.length,
-    signal
-  };
-}
-
-function renderStats() {
-  const rows = filterRowsByRange(loadRows());
-  const pools = [...new Set(rows.map((row) => row.pool))];
-  $("#realTotalStats").innerHTML = renderRealTotalStats(rows);
-  $("#combinedStats").innerHTML = renderCombinedStats(rows);
-  $("#poolStats").innerHTML = pools.length
-    ? pools.map((pool, index) => renderPoolCard(pool, rows.filter((row) => row.pool === pool), COLORS[index % COLORS.length])).join("")
-    : `<div class="empty-state">Importa o captura datos para ver estadísticas.</div>`;
-}
-
-function filterRowsByRange(rows) {
-  if (activeRange === "all" || !rows.length) return rows;
-  const dates = [...new Set(rows.map((row) => row.date))].sort();
-  const allowed = new Set(dates.slice(-Number(activeRange)));
-  return rows.filter((row) => allowed.has(row.date));
-}
-
-function dailySeries(rows) {
-  const byDate = new Map();
-  for (const row of rows) byDate.set(row.date, round2((byDate.get(row.date) || 0) + row.daily));
-  return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
-}
-
-function cumulativeSeries(rows) {
-  let runningTotal = 0;
-  return dailySeries(rows).map((item) => {
-    runningTotal = round2(runningTotal + item.value);
-    return { date: item.date, value: runningTotal };
-  });
-}
-
-function metrics(series) {
-  const values = series.map((item) => item.value);
-  if (!values.length) return { max: 0, min: 0, average: 0, weekAverage: 0, total: 0 };
-  const total = values.reduce((sum, value) => sum + value, 0);
-  return {
-    max: Math.max(...values),
-    min: Math.min(...values),
-    average: total / values.length,
-    weekAverage: calendarWeekAverage(series),
-    total
-  };
-}
-
-function calendarWeekAverage(series) {
-  if (!series.length) return 0;
-  const today = parseLocalDate(todayISO());
-  const weekStart = mondayStart(today);
-  const weekValues = series
-    .filter((item) => {
-      const date = parseLocalDate(item.date);
-      return date >= weekStart && date <= today;
-    })
-    .map((item) => item.value);
-  return weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : 0;
-}
-
-function renderCombinedStats(rows) {
-  const series = dailySeries(rows);
-  const data = metrics(series);
-  return `
-    <div class="card-top">
-      <div>
-        <p class="eyebrow">Todos los pools como uno solo</p>
-        <strong>Rendimiento combinado</strong>
-      </div>
-      <span class="muted">${series.length} días</span>
-    </div>
-    ${renderChart(series, "#16d9f4")}
-    ${renderMetrics(data)}
-  `;
-}
-
-function renderRealTotalStats(rows) {
-  const daily = dailySeries(rows);
-  const cumulative = cumulativeSeries(rows);
-  const total = cumulative.at(-1)?.value || 0;
-  const bestDay = daily.length ? Math.max(...daily.map((item) => item.value)) : 0;
-  const average = daily.length ? daily.reduce((sum, item) => sum + item.value, 0) / daily.length : 0;
-  return `
-    <div class="card-top">
-      <div>
-        <p class="eyebrow">Suma real de ganancias</p>
-        <strong>Ganancia real acumulada</strong>
-      </div>
-      <span class="muted">${daily.length} días</span>
-    </div>
-    ${renderChart(cumulative, "#27e49f", { showDateGuides: true })}
-    <div class="metric-grid">
-      <div class="metric-box"><span>Total real</span><strong>${money.format(total)}</strong></div>
-      <div class="metric-box"><span>Mejor día</span><strong>${money.format(bestDay)}</strong></div>
-      <div class="metric-box"><span>Promedio diario</span><strong>${money.format(average)}</strong></div>
-      <div class="metric-box"><span>Días</span><strong>${daily.length}</strong></div>
-    </div>
-  `;
-}
-
-function renderPoolCard(pool, rows, color) {
-  const series = dailySeries(rows);
-  return `
-    <article class="pool-card">
-      <div class="card-top">
-        <strong>${escapeHtml(pool)}</strong>
-        <span class="muted">${series.length} días</span>
-      </div>
-      ${renderChart(series, color)}
-      ${renderMetrics(metrics(series))}
-    </article>
-  `;
-}
-
-function renderMetrics(data) {
-  return `
-    <div class="metric-grid">
-      <div class="metric-box"><span>Máximo</span><strong>${money.format(data.max)}</strong></div>
-      <div class="metric-box"><span>Mínimo</span><strong>${money.format(data.min)}</strong></div>
-      <div class="metric-box"><span>Media</span><strong>${money.format(data.average)}</strong></div>
-      <div class="metric-box"><span>Promedio semana</span><strong>${money.format(data.weekAverage)}</strong></div>
-    </div>
-  `;
-}
-
-function renderYearThresholdMap(rows, selectedDate) {
-  const selected = parseLocalDate(selectedDate || todayISO());
-  const year = selected.getFullYear();
-  const today = parseLocalDate(todayISO());
-  const yearStart = new Date(year, 0, 1);
-  const yearEnd = new Date(year, 11, 31);
-  const firstGridDay = mondayStart(yearStart);
-  const totalDays = differenceInDays(yearEnd, firstGridDay) + 1;
-  const gridDays = Math.ceil(totalDays / 7) * 7;
-  const totalsByDate = new Map(dailySeries(rows).map((item) => [item.date, item.value]));
-  const selectedDay = dayOfYear(selected);
-  const yearRows = [...totalsByDate.entries()].filter(([date]) => date.startsWith(`${year}-`));
-  const redDays = yearRows.filter(([, value]) => value <= DAILY_RED_MAX).length;
-  const yellowDays = yearRows.filter(([, value]) => value > DAILY_RED_MAX && value <= DAILY_YELLOW_MAX).length;
-  const greenDays = yearRows.filter(([, value]) => value > DAILY_YELLOW_MAX).length;
-
-  const cells = Array.from({ length: gridDays }, (_, index) => {
-    const date = addDays(firstGridDay, index);
-    const iso = toISODate(date);
-    const isOutsideYear = date.getFullYear() !== year;
-    const value = totalsByDate.get(iso);
-    const isFuture = date > today;
-    const status =
-      isOutsideYear || isFuture || value === undefined
-        ? "empty"
-        : value <= DAILY_RED_MAX
-          ? "red"
-          : value <= DAILY_YELLOW_MAX
-            ? "yellow"
-            : "green";
-    const isSelected = iso === selectedDate;
-    const title = isOutsideYear ? "" : `${iso}: ${value === undefined ? "sin dato" : money.format(value)}`;
-    return `<span class="year-cell ${status}${isSelected ? " selected" : ""}" title="${escapeHtml(title)}"></span>`;
-  }).join("");
-
-  $("#yearThresholdMap").innerHTML = `
-    <div class="year-map-head">
-      <div>
-        <strong>Mapa del año</strong>
-        <span>${greenDays} verdes · ${yellowDays} amarillos · ${redDays} rojos</span>
-      </div>
-      <strong>${year} · día ${selectedDay}</strong>
-    </div>
-    <div class="year-map-legend">
-      <span><i class="green"></i> ${money.format(51)} o más</span>
-      <span><i class="yellow"></i> ${money.format(41)} a ${money.format(50)}</span>
-      <span><i class="red"></i> ${money.format(40)} o menos</span>
-    </div>
-    <div class="year-map-grid" aria-label="Mapa anual de meta diaria">${cells}</div>
-  `;
-}
-
-function parseLocalDate(value) {
-  const [year, month, day] = String(value).split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function toISODate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function mondayStart(date) {
-  const start = new Date(date);
-  const day = start.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  start.setDate(start.getDate() + diff);
-  start.setHours(0, 0, 0, 0);
-  return start;
-}
-
-function differenceInDays(end, start) {
-  const msPerDay = 1000 * 60 * 60 * 24;
-  return Math.round((mondaySafe(end) - mondaySafe(start)) / msPerDay);
-}
-
-function mondaySafe(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function dayOfYear(date) {
-  return differenceInDays(date, new Date(date.getFullYear(), 0, 1)) + 1;
-}
-
-function renderChart(series, color, options = {}) {
-  if (!series.length) return `<div class="chart empty-state">Sin datos para graficar.</div>`;
-  const width = 640;
-  const height = 170;
-  const pad = 16;
-  const bottomPad = options.showDateGuides ? 34 : pad;
-  const values = series.map((item) => item.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
-  const points = series.map((item, index) => {
-    const x = series.length === 1 ? width / 2 : pad + (index / (series.length - 1)) * (width - pad * 2);
-    const y = height - bottomPad - ((item.value - min) / span) * (height - pad - bottomPad);
-    return [round2(x), round2(y)];
-  });
-  const line = points.map(([x, y], index) => `${index ? "L" : "M"} ${x} ${y}`).join(" ");
-  const baseline = height - bottomPad;
-  const area = `${line} L ${points.at(-1)[0]} ${baseline} L ${points[0][0]} ${baseline} Z`;
-  const grid = [0.25, 0.5, 0.75]
-    .map((pct) => {
-      const y = pad + (height - pad - bottomPad) * pct;
-      return `<line class="axis" x1="${pad}" x2="${width - pad}" y1="${y}" y2="${y}" />`;
-    })
-    .join("");
-  const dateGuides = options.showDateGuides ? renderDateGuides(series, points, baseline) : "";
-  const point = series.length === 1 ? `<circle class="chart-point" cx="${points[0][0]}" cy="${points[0][1]}" r="4" fill="${color}"></circle>` : "";
-  return `
-    <svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfica de ganancias">
-      ${grid}
-      ${dateGuides}
-      <path class="area" d="${area}" fill="${color}"></path>
-      <path class="line" d="${line}" stroke="${color}"></path>
-      ${point}
-    </svg>
-  `;
-}
-
-function renderDateGuides(series, points, baseline) {
-  const maxGuides = 9;
-  const step = Math.max(1, Math.ceil(series.length / maxGuides));
-  const indexes = [];
-  for (let index = 0; index < series.length; index += step) indexes.push(index);
-  if (indexes.at(-1) !== series.length - 1) indexes.push(series.length - 1);
-
-  return indexes
-    .map((index) => {
-      const [x] = points[index];
-      const label = formatChartDate(series[index].date);
-      return `
-        <line class="chart-date-guide" x1="${x}" x2="${x}" y1="16" y2="${baseline}"></line>
-        <text class="chart-date-label" x="${x}" y="${baseline + 17}" text-anchor="middle">${label}</text>
-      `;
-    })
-    .join("");
-}
-
-function formatChartDate(value) {
-  const date = parseLocalDate(value);
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function renderForecast() {
-  const rows = loadRows();
-  const series = dailySeries(rows);
-  const data = metrics(series);
-  const average = data.average;
-  const values = series.map((item) => item.value);
-  const volatility = values.length > 1 ? standardDeviation(values) : 0;
-  const conservative = Math.max(0, average - volatility * 0.5);
-  const optimistic = average + volatility * 0.5;
-
-  $("#forecastGrid").innerHTML = series.length
-    ? `
-      <article class="forecast-card feature">
-        <p class="eyebrow">Lectura creativa</p>
-        <strong>Si el ritmo actual se mantiene</strong>
-        <div class="forecast-value">${money.format(average)} / día</div>
-        <p>Tu ritmo combinado sugiere un rango diario entre ${money.format(conservative)} y ${money.format(optimistic)} cuando se considera la variación histórica reciente.</p>
-      </article>
-      ${forecastCard("Semana", average * 7, conservative * 7, optimistic * 7)}
-      ${forecastCard("Mes", average * 30, conservative * 30, optimistic * 30)}
-      ${forecastCard("Año", average * 365, conservative * 365, optimistic * 365)}
-      <article class="forecast-card">
-        <strong>Señal operativa</strong>
-        <p>${forecastSignal(series)}</p>
-      </article>
-    `
-    : `<div class="empty-state">Cuando tengas capturas, aquí aparecerán proyecciones semanales, mensuales y anuales.</div>`;
-}
-
-function forecastCard(title, expected, low, high) {
-  return `
-    <article class="forecast-card">
-      <strong>${title}</strong>
-      <div class="forecast-value">${money.format(expected)}</div>
-      <p>Rango esperado: ${money.format(low)} a ${money.format(high)}.</p>
-    </article>
-  `;
-}
-
-function standardDeviation(values) {
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const variance = values.reduce((sum, value) => sum + Math.pow(value - average, 2), 0) / values.length;
-  return Math.sqrt(variance);
-}
-
-function forecastSignal(series) {
-  const recent = series.slice(-7).map((item) => item.value);
-  const prior = series.slice(-14, -7).map((item) => item.value);
-  if (recent.length < 3 || prior.length < 3) return "Aún faltan más días para detectar tendencia, pero ya puedes usar el promedio como escenario base.";
-  const recentAvg = recent.reduce((sum, value) => sum + value, 0) / recent.length;
-  const priorAvg = prior.reduce((sum, value) => sum + value, 0) / prior.length;
-  if (recentAvg > priorAvg) return "La última ventana viene creciendo contra la anterior; el forecast alto es alcanzable si no hay modificaciones de pools.";
-  if (recentAvg < priorAvg) return "La última ventana viene por debajo de la anterior; conviene revisar cambios de pool o variación operativa antes de asumir el escenario anual.";
-  return "La última ventana está estable; el promedio actual es una base razonable para planear.";
-}
-
-function renderDatabase() {
-  const rows = loadRows();
-  $("#recordCount").textContent = `${rows.length} registros`;
-  $("#currentUserName").textContent = currentUser?.username || "--";
-  renderHistoryTable(rows);
-}
-
-function renderHistoryTable(rows) {
-  const sorted = sortRows(rows).reverse();
-  $("#historyTable").innerHTML = sorted.length
-    ? `
-      <table>
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Pool</th>
-            <th>Acumulado visible</th>
-            <th>Ganancia día</th>
-            <th>Acum. ajustado</th>
-            <th>Estado</th>
-            <th>Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${sorted
-            .map(
-              (row) => `
-                <tr data-row-id="${row.id}">
-                  <td><input name="editDate" type="date" value="${escapeHtml(row.date)}" /></td>
-                  <td><input name="editPool" value="${escapeHtml(row.pool)}" /></td>
-                  <td><input name="editTotal" type="number" step="0.01" min="0" value="${row.total}" /></td>
-                  <td>${money.format(row.daily)}</td>
-                  <td>${money.format(row.adjustedTotal ?? row.total)}</td>
-                  <td><span class="${row.modified ? "reset-tag" : "muted"}">${row.modified ? "Modificado" : "Normal"}</span></td>
-                  <td>
-                    <div class="table-actions">
-                      <button class="small-button" type="button" data-save-row>Guardar</button>
-                      <button class="small-button danger" type="button" data-delete-row>Borrar</button>
-                    </div>
-                  </td>
-                </tr>
-              `
-            )
-            .join("")}
-        </tbody>
-      </table>
-    `
-    : `<div class="empty-state">Todavía no hay capturas para este usuario.</div>`;
-}
-
-function showSection(sectionId, updateHash = true) {
-  const safeSectionId = sections.includes(sectionId) ? sectionId : "capture";
-  document.querySelectorAll(".page-section").forEach((section) => {
-    section.classList.toggle("active", section.id === safeSectionId);
-  });
-  document.querySelectorAll("[data-section-link]").forEach((link) => {
-    link.classList.toggle("active", link.dataset.sectionLink === safeSectionId);
-  });
-  if (updateHash && location.hash !== `#${safeSectionId}`) {
-    history.pushState(null, "", `#${safeSectionId}`);
-  }
-}
-
-function renderAll() {
-  $("#todayText").textContent = dateLabel.format(new Date(`${todayISO()}T00:00:00`));
-  renderPoolInputs();
-  renderCapture();
-  renderStats();
-  renderForecast();
-  renderDatabase();
-}
-
-async function upsertRows(incomingRows, source = "manual") {
-  const data = await api("/api/rows", {
-    method: "POST",
-    body: JSON.stringify({ rows: incomingRows, source })
-  });
-  rowsCache = data.rows || [];
-}
-
-function rowsToCsv(rows) {
-  const body = sortRows(rows).map((row) => [row.date, row.pool, row.total].map(csvCell).join(","));
-  return ["date,pool,total", ...body].join("\n");
-}
-
-function rowsToBackupCsv(rows) {
-  const body = sortRows(rows).map((row) =>
-    [currentUser?.username, row.date, row.pool, row.total, row.daily, row.adjustedTotal ?? row.total, row.modified ? "yes" : "no"].map(csvCell).join(",")
-  );
-  return ["user,date,pool,total,daily,adjusted_total,modified", ...body].join("\n");
-}
-
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function templateCsv() {
-  const pools = defaultPools().length ? defaultPools() : ["rojo", "negro"];
-  const lines = ["date,pool,total"];
-  for (const [index, pool] of pools.entries()) {
-    lines.push(`${todayISO()},${csvCell(pool)},${index === 0 ? "1000" : "850"}`);
-  }
-  return lines.join("\n");
-}
-
-function downloadFile(filename, content) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function parseCsv(text) {
-  const cleanText = String(text || "").replace(/^\uFEFF/, "").replace(/^sep=.\r?\n/i, "");
-  const delimiter = detectDelimiter(cleanText);
-  const rows = [];
-  let cell = "";
-  let row = [];
-  let quoted = false;
-
-  for (let i = 0; i < cleanText.length; i += 1) {
-    const char = cleanText[i];
-    const next = cleanText[i + 1];
-    if (char === '"' && quoted && next === '"') {
-      cell += '"';
-      i += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      row.push(cell);
-      cell = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") i += 1;
-      row.push(cell);
-      if (row.some((item) => item.trim())) rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-  row.push(cell);
-  if (row.some((item) => item.trim())) rows.push(row);
-
-  const [headers, ...data] = rows;
-  if (!headers) throw new Error("El archivo esta vacio.");
-
-  const normalized = headers.map(normalizeHeader);
-  const dateIndex = findHeader(normalized, ["date", "fecha"]);
-  const poolIndex = findHeader(normalized, ["pool", "piscina"]);
-  const totalIndex = findHeader(normalized, ["total", "acumulado", "ganancia acumulada", "visible total", "visible_total"]);
-  if ([dateIndex, poolIndex, totalIndex].includes(-1)) {
-    throw new Error("No encontre columnas validas. Usa date,pool,total o fecha,pool,acumulado.");
-  }
-
-  return data.map((items) => ({
-    date: normalizeDate(items[dateIndex]),
-    pool: normalizePoolName(items[poolIndex]),
-    total: normalizeNumber(items[totalIndex])
-  }));
-}
-
-function detectDelimiter(text) {
-  const firstLine = String(text || "").split(/\r?\n/).find((line) => line.trim()) || "";
-  const delimiters = [",", ";", "\t"];
-  return delimiters
-    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
-    .sort((a, b) => b.count - a.count)[0].delimiter;
-}
-
-function normalizeHeader(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-function findHeader(headers, candidates) {
-  return headers.findIndex((header) => candidates.includes(header));
-}
-
-function normalizeDate(value) {
-  const cleanValue = String(value || "").trim();
-  const iso = cleanValue.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
-  const latam = cleanValue.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-  if (latam) return `${latam[3]}-${latam[2].padStart(2, "0")}-${latam[1].padStart(2, "0")}`;
-  return cleanValue;
-}
-
-function normalizeNumber(value) {
-  const cleanValue = String(value || "")
-    .trim()
-    .replace(/\$/g, "")
-    .replace(/\s/g, "");
-
-  if (cleanValue.includes(",") && cleanValue.includes(".")) {
-    return Number(cleanValue.replace(/,/g, ""));
-  }
-  if (cleanValue.includes(",") && !cleanValue.includes(".")) {
-    return Number(cleanValue.replace(",", "."));
-  }
-  return Number(cleanValue);
-}
-
-function previewImport(rows, sourceLabel) {
-  const valid = rows.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.pool && Number.isFinite(row.total));
-  const existingKeys = new Set(loadRows().map((row) => `${row.date}__${row.pool}`));
-  const replaceCount = valid.filter((row) => existingKeys.has(`${row.date}__${row.pool}`)).length;
-  const newCount = valid.length - replaceCount;
-  const errorCount = rows.length - valid.length;
-  pendingImportRows = valid;
-  $("#uploadResult").textContent = `Previsualizacion de ${sourceLabel}: ${newCount} nuevos, ${replaceCount} reemplazos, ${errorCount} con error. Confirma para guardar.`;
-  $("#importPreview").classList.toggle("auth-hidden", !valid.length);
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function showLogin(message = "Ingresa tus credenciales.") {
-  $("#loginScreen").classList.remove("auth-hidden");
-  $("#appShell").classList.add("auth-hidden");
-  $("#loginError").textContent = message;
-}
-
-async function showApp() {
-  $("#loginScreen").classList.add("auth-hidden");
-  $("#appShell").classList.remove("auth-hidden");
-  $("#currentUserName").textContent = currentUser?.username || "--";
-  await refreshRows();
-  showSection(location.hash.slice(1) || "capture", false);
-}
-
-$("#captureDate").value = todayISO();
-
-$("#loginForm").addEventListener("submit", async (event) => {
+const authScreen = $("#authScreen");
+const appShell = $("#appShell");
+const dateInput = $("#sessionDate");
+const form = $("#sessionForm");
+const formMessage = $("#formMessage");
+const historyForm = $("#historyForm");
+const baselineForm = $("#baselineForm");
+const forecastMessage = $("#forecastMessage");
+const importForm = $("#importForm");
+const importMessage = $("#importMessage");
+
+dateInput.value = todayIso;
+$("#todayLabel").textContent = formatter.format(today);
+$("#seedDate").value = todayIso;
+$("#historyYear").value = today.getFullYear() - 1;
+
+$("#authForm").addEventListener("submit", async (event) => {
   event.preventDefault();
+  await login();
+});
+
+$("#registerButton").addEventListener("click", async () => {
+  setAuthMessage("Creando usuario...", "");
   try {
-    const data = await api("/api/login", {
+    const response = await api("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({
-        username: $("#loginUser").value,
-        password: $("#loginPassword").value
-      })
+      body: {
+        username: $("#authUsername").value,
+        password: $("#authPassword").value,
+      },
     });
-    currentUser = data.user;
-    $("#loginPassword").value = "";
-    await showApp();
+    if (!response.ok) throw new Error(response.data.message);
+    setAuthMessage("Usuario creado. Ya puedes entrar.", "success");
   } catch (error) {
-    showLogin(error.message);
+    setAuthMessage(error.message, "error");
   }
 });
 
 $("#logoutButton").addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST", body: "{}" });
-  currentUser = null;
-  rowsCache = [];
-  showLogin("Sesión cerrada.");
+  await api("/api/auth/logout", { method: "POST" });
+  appShell.classList.add("is-hidden");
+  authScreen.classList.remove("is-hidden");
 });
 
-$("#addPoolButton").addEventListener("click", () => {
-  const poolName = normalizePoolName(prompt("Nombre del nuevo pool"));
-  if (!poolName) return;
-  const container = $("#poolInputs");
-  const existingPools = [...container.querySelectorAll('input[name="pool"]')].map((input) => normalizePoolName(input.value));
-  if (existingPools.includes(poolName)) {
-    alert("Ese pool ya existe en la captura.");
-    return;
-  }
-  container.insertAdjacentHTML("beforeend", renderPoolInputRow(poolName, "", existingPools.length));
+document.querySelectorAll(".nav-button").forEach((button) => {
+  button.addEventListener("click", () => showScreen(button.dataset.screen, button));
 });
 
-$("#poolInputs").addEventListener("click", (event) => {
-  const button = event.target.closest("[data-remove-pool]");
-  if (!button) return;
-  button.closest(".pool-input-row").remove();
+document.querySelectorAll(".period-card").forEach((card) => {
+  card.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    setActivePeriod(card.dataset.periodCard);
+  });
 });
 
-$("#captureDate").addEventListener("change", renderCapture);
+document.querySelectorAll(".icon-button").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const period = button.dataset.period;
+    offsets[period] += Number(button.dataset.step);
+    setActivePeriod(period);
+    await loadPeriod(period);
+    renderCharts(periodData[period]);
+  });
+});
 
-$("#captureForm").addEventListener("submit", async (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const rows = [...$("#poolInputs").querySelectorAll(".pool-input-row")].map((row) => ({
-    date: $("#captureDate").value,
-    pool: normalizePoolName(row.querySelector('[name="pool"]').value),
-    total: Number(row.querySelector('[name="total"]').value)
-  }));
-  await upsertRows(rows, "manual");
-  $("#captureStatus").textContent = "Captura manual guardada.";
-  renderAll();
-});
+  const editingId = $("#editingSessionId").value;
+  setMessage(editingId ? "Guardando cambios..." : "Guardando sesión...", "");
 
-document.querySelectorAll("[data-range]").forEach((button) => {
-  button.addEventListener("click", () => {
-    activeRange = button.dataset.range;
-    document.querySelectorAll("[data-range]").forEach((item) => item.classList.toggle("active", item === button));
-    renderStats();
-  });
-});
-
-document.querySelectorAll("[data-section-link]").forEach((link) => {
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    showSection(link.dataset.sectionLink);
-  });
-});
-
-window.addEventListener("hashchange", () => {
-  showSection(location.hash.slice(1), false);
-});
-
-$("#downloadCsv").addEventListener("click", () => {
-  downloadFile(`pool-gains-${currentUser?.username}.csv`, rowsToCsv(loadRows()));
-});
-
-$("#downloadBackup").addEventListener("click", () => {
-  downloadFile(`pool-gains-backup-${currentUser?.username}.csv`, rowsToBackupCsv(loadRows()));
-});
-
-$("#downloadTemplate").addEventListener("click", () => {
-  downloadFile(`plantilla-pool-gains-${currentUser?.username}.csv`, `\uFEFFsep=,\n${templateCsv()}\n`);
-});
-
-$("#csvUpload").addEventListener("change", async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+  const payload = readSessionForm();
   try {
-    const rows = parseCsv(await file.text());
-    previewImport(rows, file.name);
+    const response = await api(editingId ? `/api/sessions/${editingId}` : "/api/sessions", {
+      method: editingId ? "PUT" : "POST",
+      body: payload,
+    });
+    if (!response.ok) throw new Error(response.data.detail ? `${response.data.message} Detalle: ${response.data.detail}` : response.data.message);
+
+    resetSessionForm();
+    setMessage(editingId ? "Sesión actualizada." : "Sesión guardada correctamente.", "success");
+    if (!editingId) renderTodayGoalResult(Number(payload.kilometers));
+    await refreshDashboard();
   } catch (error) {
-    $("#uploadResult").textContent = error.message;
-    $("#importPreview").classList.add("auth-hidden");
-    pendingImportRows = [];
-  } finally {
-    event.target.value = "";
+    setMessage(error.message, "error");
   }
 });
 
-$("#fillCsvExample").addEventListener("click", () => {
-  $("#csvPasteBox").value = templateCsv();
-  $("#uploadResult").textContent = "Ejemplo listo. Puedes editarlo y luego previsualizar.";
-});
+$("#cancelEditButton").addEventListener("click", resetSessionForm);
+$("#refreshSessionsButton").addEventListener("click", loadSessions);
 
-$("#previewPastedCsv").addEventListener("click", () => {
-  try {
-    const text = $("#csvPasteBox").value;
-    if (!text.trim()) {
-      $("#uploadResult").textContent = "Pega o escribe datos antes de previsualizar.";
-      return;
-    }
-    previewImport(parseCsv(text), "texto pegado");
-  } catch (error) {
-    $("#uploadResult").textContent = error.message;
-    $("#importPreview").classList.add("auth-hidden");
-    pendingImportRows = [];
-  }
-});
+$("#sessionsTable").addEventListener("click", async (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  const id = button.dataset.id;
+  const row = JSON.parse(button.closest("[data-session]").dataset.session);
 
-$("#confirmImport").addEventListener("click", async () => {
-  if (!pendingImportRows.length) return;
-  await upsertRows(pendingImportRows, "csv_import");
-  $("#uploadResult").textContent = `Importados ${pendingImportRows.length} registros.`;
-  pendingImportRows = [];
-  $("#importPreview").classList.add("auth-hidden");
-  renderAll();
-});
-
-$("#cancelImport").addEventListener("click", () => {
-  pendingImportRows = [];
-  $("#uploadResult").textContent = "Importación cancelada.";
-  $("#importPreview").classList.add("auth-hidden");
-});
-
-$("#historyTable").addEventListener("click", async (event) => {
-  const rowElement = event.target.closest("tr[data-row-id]");
-  if (!rowElement) return;
-  const id = rowElement.dataset.rowId;
-
-  if (event.target.closest("[data-delete-row]")) {
-    if (!confirm("¿Borrar esta captura?")) return;
-    const data = await api(`/api/rows/${id}`, { method: "DELETE" });
-    rowsCache = data.rows || [];
-    renderAll();
+  if (button.dataset.action === "edit") {
+    showScreen("session", document.querySelector('[data-screen="session"]'));
+    fillSessionForm(row);
     return;
   }
 
-  if (event.target.closest("[data-save-row]")) {
-    try {
-      const data = await api(`/api/rows/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          date: rowElement.querySelector('[name="editDate"]').value,
-          pool: normalizePoolName(rowElement.querySelector('[name="editPool"]').value),
-          total: Number(rowElement.querySelector('[name="editTotal"]').value)
-        })
-      });
-      rowsCache = data.rows || [];
-      $("#uploadResult").textContent = "Captura actualizada y métricas recalculadas.";
-      renderAll();
-    } catch (error) {
-      $("#uploadResult").textContent = error.message;
-    }
+  if (!window.confirm("¿Eliminar esta sesión?")) return;
+  const response = await api(`/api/sessions/${id}`, { method: "DELETE" });
+  if (!response.ok) {
+    setMessage(response.data.message, "error");
+    return;
+  }
+  await refreshDashboard();
+});
+
+historyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setForecastMessage("Guardando histórico...", "");
+  try {
+    const response = await api("/api/history-years", {
+      method: "POST",
+      body: {
+        year: $("#historyYear").value,
+        kilometers: $("#historyKilometers").value,
+        durationMinutes: $("#historyMinutes").value,
+      },
+    });
+    if (!response.ok) throw new Error(response.data.detail ? `${response.data.message} Detalle: ${response.data.detail}` : response.data.message);
+    setForecastMessage("Histórico guardado.", "success");
+    await loadForecastArea();
+  } catch (error) {
+    setForecastMessage(error.message, "error");
   }
 });
 
-async function bootstrap() {
-  $("#todayText").textContent = dateLabel.format(new Date(`${todayISO()}T00:00:00`));
+baselineForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveBaseline("/api/current-year-baseline");
+});
+
+$("#resetYearButton").addEventListener("click", async () => {
+  await saveBaseline("/api/current-year-reset");
+});
+
+importForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  importRows = [];
+  $("#commitImportButton").disabled = true;
+  setImportMessage("Leyendo archivo...", "");
+
+  const file = $("#importFile").files[0];
+  if (!file) return setImportMessage("Selecciona un archivo CSV.", "error");
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    return setImportMessage("Usa CSV. La plantilla abre en Excel y se puede guardar como CSV.", "error");
+  }
+
   try {
-    const data = await api("/api/session");
-    currentUser = data.user;
-    if (currentUser) {
-      await showApp();
-    } else {
-      showLogin();
-    }
-  } catch {
-    showLogin("No se pudo conectar con el servidor.");
+    const text = await file.text();
+    const response = await api("/api/import-preview", { method: "POST", body: { text } });
+    if (!response.ok) throw new Error(response.data.message);
+    importRows = response.data.validRows || [];
+    renderImportPreview(response.data);
+    $("#commitImportButton").disabled = importRows.length === 0 || response.data.errors.length > 0;
+    setImportMessage(
+      response.data.errors.length > 0
+        ? "Hay observaciones. Corrige el archivo y vuelve a previsualizar."
+        : "Todo se ve bien. Puedes guardar la importación.",
+      response.data.errors.length > 0 ? "error" : "success",
+    );
+  } catch (error) {
+    setImportMessage(error.message, "error");
+  }
+});
+
+$("#commitImportButton").addEventListener("click", async () => {
+  setImportMessage("Guardando importación...", "");
+  try {
+    const response = await api("/api/import-sessions", { method: "POST", body: { rows: importRows } });
+    if (!response.ok) throw new Error(response.data.message);
+    setImportMessage(`Importadas ${response.data.imported} sesiones.`, "success");
+    importRows = [];
+    $("#commitImportButton").disabled = true;
+    await refreshDashboard();
+  } catch (error) {
+    setImportMessage(error.message, "error");
+  }
+});
+
+async function api(url, options = {}) {
+  const fetchOptions = {
+    method: options.method || "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : {},
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  };
+  const response = await fetch(url, fetchOptions);
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json().catch(() => ({})) : {};
+  if (response.status === 401) {
+    appShell.classList.add("is-hidden");
+    authScreen.classList.remove("is-hidden");
+  }
+  return { ok: response.ok, status: response.status, data };
+}
+
+async function boot() {
+  const response = await api("/api/auth/me");
+  if (response.ok && response.data.authenticated) {
+    enterApp(response.data.user);
+  } else {
+    authScreen.classList.remove("is-hidden");
+    appShell.classList.add("is-hidden");
   }
 }
 
-bootstrap();
+async function login() {
+  setAuthMessage("Entrando...", "");
+  try {
+    const response = await api("/api/auth/login", {
+      method: "POST",
+      body: { username: $("#authUsername").value, password: $("#authPassword").value },
+    });
+    if (!response.ok) throw new Error(response.data.message);
+    setAuthMessage("", "");
+    enterApp(response.data.user);
+  } catch (error) {
+    setAuthMessage(error.message, "error");
+  }
+}
+
+async function enterApp(user) {
+  $("#userLabel").textContent = `Usuario: ${user.username}`;
+  authScreen.classList.add("is-hidden");
+  appShell.classList.remove("is-hidden");
+  await refreshDashboard();
+}
+
+function showScreen(screen, activeButton) {
+  document.querySelectorAll(".nav-button").forEach((item) => item.classList.toggle("is-active", item === activeButton));
+  document.querySelectorAll(".screen").forEach((view) => view.classList.toggle("is-active", view.dataset.view === screen));
+  if (screen === "history") loadSessions();
+}
+
+function readSessionForm() {
+  return {
+    sessionDate: dateInput.value,
+    kilometers: $("#kilometers").value,
+    strokes: $("#strokes").value,
+    calories: $("#calories").value,
+    durationMinutes: $("#durationMinutes").value,
+  };
+}
+
+function fillSessionForm(row) {
+  $("#editingSessionId").value = row.id;
+  dateInput.value = row.sessionDate;
+  $("#kilometers").value = row.kilometers;
+  $("#strokes").value = row.strokes;
+  $("#calories").value = row.calories;
+  $("#durationMinutes").value = row.durationMinutes;
+  $("#sessionSubmitButton").textContent = "Guardar cambios";
+  $("#cancelEditButton").classList.add("is-visible");
+}
+
+function resetSessionForm() {
+  form.reset();
+  $("#editingSessionId").value = "";
+  dateInput.value = todayIso;
+  $("#sessionSubmitButton").textContent = "Guardar sesión";
+  $("#cancelEditButton").classList.remove("is-visible");
+}
+
+function setAuthMessage(message, type) {
+  $("#authMessage").textContent = message;
+  $("#authMessage").classList.toggle("is-success", type === "success");
+  $("#authMessage").classList.toggle("is-error", type === "error");
+}
+
+function setMessage(message, type) {
+  formMessage.textContent = message;
+  formMessage.classList.toggle("is-success", type === "success");
+  formMessage.classList.toggle("is-error", type === "error");
+}
+
+function setForecastMessage(message, type) {
+  forecastMessage.textContent = message;
+  forecastMessage.classList.toggle("is-success", type === "success");
+  forecastMessage.classList.toggle("is-error", type === "error");
+}
+
+function setImportMessage(message, type) {
+  importMessage.textContent = message;
+  importMessage.classList.toggle("is-success", type === "success");
+  importMessage.classList.toggle("is-error", type === "error");
+}
+
+function formatKm(value) {
+  return `${Number(value || 0).toLocaleString("es-MX", { maximumFractionDigits: 2 })} km`;
+}
+
+function formatSpeed(value) {
+  return `${Number(value || 0).toLocaleString("es-MX", { maximumFractionDigits: 2 })} km/h`;
+}
+
+function formatCalories(value) {
+  return Number(value || 0).toLocaleString("es-MX", { maximumFractionDigits: 2 });
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("es-MX", { maximumFractionDigits: 2 });
+}
+
+function formatMinutes(value) {
+  const minutes = Number(value || 0);
+  if (minutes >= 60) return `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min`;
+  return `${formatNumber(minutes)} min`;
+}
+
+function formatPace(minutesPer500m) {
+  const totalSeconds = Math.round(Number(minutesPer500m || 0) * 60);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+async function loadPeriod(period) {
+  const response = await api(`/api/stats?period=${period}&offset=${offsets[period]}`);
+  if (!response.ok) {
+    const detail = response.data.detail ? ` Detalle: ${response.data.detail}` : "";
+    throw new Error(`${response.data.message || "No se pudo leer la base de datos."}${detail}`);
+  }
+  periodData[period] = response.data;
+  renderPeriodCard(response.data);
+}
+
+async function refreshDashboard() {
+  try {
+    await Promise.all(periods.map((period) => loadPeriod(period)));
+    renderYearPreview();
+    renderCharts(periodData[activePeriod]);
+    await Promise.all([loadForecastArea(), loadSessions()]);
+    setMessage("", "");
+  } catch (error) {
+    setMessage(error.message, "error");
+  }
+}
+
+async function loadSessions() {
+  const response = await api("/api/sessions?limit=120");
+  if (!response.ok) return;
+  renderSessions(response.data);
+}
+
+async function loadForecastArea() {
+  const [forecastResponse, historyResponse, yearMapResponse] = await Promise.all([
+    api("/api/forecast"),
+    api("/api/history-years"),
+    api("/api/year-map"),
+  ]);
+  if (!forecastResponse.ok) throw new Error(forecastResponse.data.message || "No se pudo leer el forecast.");
+  if (!historyResponse.ok) throw new Error(historyResponse.data.message || "No se pudo leer el histórico.");
+  if (!yearMapResponse.ok) throw new Error(yearMapResponse.data.message || "No se pudo leer el mapa anual.");
+  renderForecast(forecastResponse.data);
+  renderHistory(historyResponse.data);
+  renderYearMap(yearMapResponse.data);
+}
+
+function setActivePeriod(period) {
+  activePeriod = period;
+  document.querySelectorAll(".period-card").forEach((card) => card.classList.toggle("is-active", card.dataset.periodCard === period));
+  if (periodData[period]) renderCharts(periodData[period]);
+}
+
+function renderPeriodCard(data) {
+  $(`#${data.period}Title`).textContent = data.range.title;
+  $(`#${data.period}Summary`).innerHTML = `
+    <span>${formatNumber(data.summary.sessions)} sesiones</span>
+    <span>${formatKm(data.summary.kilometers)}</span>
+    <span>${formatMinutes(data.summary.durationMinutes)}</span>
+    <span>${formatPace(data.summary.pace500m)} /500m</span>
+  `;
+}
+
+function renderYearPreview() {
+  const year = periodData.year?.summary || {};
+  $("#totalSessions").textContent = formatNumber(year.sessions);
+  $("#yearKm").textContent = formatKm(year.kilometers);
+  $("#yearTime").textContent = formatMinutes(year.durationMinutes);
+  $("#yearPace").textContent = formatPace(year.pace500m);
+  $("#yearSpm").textContent = formatNumber(year.strokesPerMinute);
+  $("#yearCaloriesKm").textContent = formatNumber(year.caloriesPerKm);
+}
+
+function renderCharts(data) {
+  if (!data) return;
+  $("#activePeriodTitle").textContent = `${periodLabels[data.period]} · ${data.range.title}`;
+  $("#kilometersTotal").textContent = formatKm(data.summary.kilometers);
+  $("#strokesTotal").textContent = formatNumber(data.summary.strokes);
+  $("#caloriesTotal").textContent = formatCalories(data.summary.calories);
+  $("#timeTotal").textContent = formatMinutes(data.summary.durationMinutes);
+  renderChart("kilometersChart", data.chart, "kilometers", formatKm);
+  renderChart("strokesChart", data.chart, "strokes", formatNumber);
+  renderChart("caloriesChart", data.chart, "calories", formatCalories);
+  renderChart("timeChart", data.chart, "durationMinutes", formatMinutes);
+}
+
+function renderForecast(data) {
+  $("#goalKilometers").textContent = formatKm(data.forecast.goalKilometers);
+  $("#currentKilometers").textContent = formatKm(data.current.totalKilometers);
+  $("#remainingKilometers").textContent = formatKm(data.forecast.remainingKilometers);
+  $("#requiredDailyKilometers").textContent = formatKm(data.forecast.requiredDailyKilometers);
+  $("#forecastAverageSpeed").textContent = formatSpeed(data.forecast.averageSpeed);
+  $("#forecastDailyAverage").textContent = formatKm(data.forecast.dailyAverage);
+  $("#seedDate").value = data.baseline.seedDate || todayIso;
+  $("#initialKilometers").value = data.baseline.initialKilometers || "";
+  $("#initialMinutes").value = data.baseline.initialDurationMinutes || "";
+  const progress = Math.max(0, Math.min(Number(data.forecast.progressPercent || 0), 100));
+  requiredTodayKilometers = Number(data.forecast.requiredDailyKilometers || 0);
+  $("#goalProgressLabel").textContent = `${progress.toFixed(1)}%`;
+  $("#goalFill").style.width = `${progress}%`;
+  $("#goalNeededDaily").textContent = `Necesario hoy: ${formatKm(requiredTodayKilometers)} / día`;
+  $("#todayGoalValue").textContent = formatKm(requiredTodayKilometers);
+  renderGoalProbability(data.forecast.goalProbability, data.forecast.requiredDailyKilometers);
+}
+
+function renderGoalProbability(probability, requiredDailyKilometers) {
+  const card = $("#goalProbabilityCard");
+  const value = $("#goalProbabilityValue");
+  const fill = $("#goalProbabilityFill");
+  const text = $("#goalProbabilityText");
+
+  if (!probability?.available) {
+    card.classList.add("is-empty");
+    value.textContent = "--";
+    fill.style.width = "0%";
+    text.textContent = probability?.message || "Guarda años históricos para estimar la probabilidad.";
+    return;
+  }
+
+  const percent = Math.max(0, Math.min(Number(probability.percent || 0), 100));
+  card.classList.remove("is-empty");
+  value.textContent = `${percent.toFixed(0)}%`;
+  fill.style.width = `${percent}%`;
+  text.textContent =
+    `${probability.message} Necesitas ${formatKm(requiredDailyKilometers)} al día; tu promedio histórico es ${formatKm(probability.historicalDailyAverage)} en ${formatNumber(probability.historicalYears)} año(s).`;
+}
+
+function renderTodayGoalResult(kilometers) {
+  const result = $("#todayGoalResult");
+  const goalCard = $("#todayGoalCard");
+  const achieved = kilometers >= requiredTodayKilometers;
+  goalCard.classList.toggle("is-hit", achieved);
+  goalCard.classList.toggle("is-miss", !achieved);
+  result.textContent = achieved ? "Lograda" : "Faltó";
+}
+
+function renderSessions(rows) {
+  $("#sessionsCount").textContent = formatNumber(rows.length);
+  if (rows.length === 0) {
+    $("#sessionsTable").innerHTML = `<div class="empty-chart">Sin sesiones</div>`;
+    return;
+  }
+  $("#sessionsTable").innerHTML = `
+    <div class="sessions-row sessions-head">
+      <span>Fecha</span><span>Km</span><span>Tiempo</span><span>Ritmo</span><span>Pal/min</span><span>Cal/km</span><span></span>
+    </div>
+    ${rows.map(renderSessionRow).join("")}
+  `;
+}
+
+function renderSessionRow(row) {
+  return `
+    <div class="sessions-row" data-session='${JSON.stringify(row)}'>
+      <span>${row.sessionDate}</span>
+      <span>${formatKm(row.kilometers)}</span>
+      <span>${formatMinutes(row.durationMinutes)}</span>
+      <span>${formatPace(row.pace500m)}</span>
+      <span>${formatNumber(row.strokesPerMinute)}</span>
+      <span>${formatNumber(row.caloriesPerKm)}</span>
+      <span class="row-actions">
+        <button class="mini-button" data-action="edit" data-id="${row.id}" type="button">Editar</button>
+        <button class="mini-button danger" data-action="delete" data-id="${row.id}" type="button">Borrar</button>
+      </span>
+    </div>
+  `;
+}
+
+function renderHistory(rows) {
+  $("#historyCount").textContent = formatNumber(rows.length);
+  if (rows.length === 0) {
+    $("#historyTable").innerHTML = `<div class="empty-chart">Sin años guardados</div>`;
+    return;
+  }
+  $("#historyTable").innerHTML = `
+    <div class="history-row history-head"><span>Año</span><span>Kilómetros</span><span>Tiempo</span><span>Velocidad</span><span>Promedio diario</span></div>
+    ${rows
+      .map(
+        (row) => `
+          <div class="history-row">
+            <span>${row.year}</span><span>${formatKm(row.kilometers)}</span><span>${formatMinutes(row.durationMinutes)}</span>
+            <span>${formatSpeed(row.averageSpeed)}</span><span>${formatKm(row.dailyAverage)}</span>
+          </div>
+        `,
+      )
+      .join("")}
+  `;
+}
+
+function renderYearMap(data) {
+  $("#yearMapTitle").textContent = `${data.year} · día ${data.todayIndex}`;
+  $("#yearMap").innerHTML = data.days
+    .map((day) => `<span class="year-day is-${day.status}" title="Día ${day.index} · ${day.date}" aria-label="Día ${day.index}: ${day.status}"></span>`)
+    .join("");
+}
+
+function renderChart(chartId, rows, key, formatterFn) {
+  const chart = $(`#${chartId}`);
+  const max = Math.max(...rows.map((row) => Number(row[key] || 0)), 1);
+  if (rows.length === 0) {
+    chart.innerHTML = `<div class="empty-chart">Sin sesiones</div>`;
+    return;
+  }
+  chart.innerHTML = rows
+    .map((row) => {
+      const value = Number(row[key] || 0);
+      const height = Math.max((value / max) * 100, 4);
+      return `<div class="bar-wrap"><div class="bar" title="${formatterFn(value)}" style="height: ${height}%"></div><div class="bar-label">${row.label}</div></div>`;
+    })
+    .join("");
+}
+
+async function saveBaseline(url) {
+  const info = await api("/api/current-year-reset-info");
+  const sessions = info.ok ? info.data.sessions : 0;
+  const confirmed = window.confirm(`Esto borrará ${sessions} sesiones del año actual. Escribe BORRAR en el campo de confirmación para continuar.`);
+  if (!confirmed) return;
+  setForecastMessage("Guardando base inicial...", "");
+  try {
+    const response = await api(url, {
+      method: url.includes("reset") ? "POST" : "PUT",
+      body: {
+        seedDate: $("#seedDate").value,
+        initialKilometers: $("#initialKilometers").value,
+        initialDurationMinutes: $("#initialMinutes").value,
+        confirmationText: $("#resetConfirm").value,
+      },
+    });
+    if (!response.ok) throw new Error(response.data.detail ? `${response.data.message} Detalle: ${response.data.detail}` : response.data.message);
+    setForecastMessage(`Base guardada. Sesiones borradas: ${response.data.deletedSessions}.`, "success");
+    $("#resetConfirm").value = "";
+    await refreshDashboard();
+  } catch (error) {
+    setForecastMessage(error.message, "error");
+  }
+}
+
+function renderImportPreview(data) {
+  $("#importCount").textContent = `${data.validRows.length} de ${data.totalRows} filas válidas`;
+  const errors = data.errors.length
+    ? `<div class="import-errors">${data.errors.map((error) => `<p>${error}</p>`).join("")}</div>`
+    : "";
+  const table = data.validRows.length
+    ? `
+      <div class="sessions-row sessions-head"><span>Fecha</span><span>Km</span><span>Paladas</span><span>Calorías</span><span>Tiempo</span></div>
+      ${data.validRows
+        .slice(0, 40)
+        .map(
+          (row) => `
+            <div class="sessions-row compact-row">
+              <span>${row.sessionDate}</span><span>${formatKm(row.kilometers)}</span><span>${formatNumber(row.strokes)}</span>
+              <span>${formatCalories(row.calories)}</span><span>${formatMinutes(row.durationMinutes)}</span>
+            </div>
+          `,
+        )
+        .join("")}
+    `
+    : `<div class="empty-chart">Sin filas válidas</div>`;
+  $("#importPreview").innerHTML = `${errors}${table}`;
+}
+
+boot();
