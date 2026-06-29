@@ -95,13 +95,31 @@ function standardDeviation(values) {
   return Math.sqrt(variance);
 }
 
-function goalProbabilityFromHistory(historyRows, requiredDailyKilometers, remainingKilometers) {
+function scoreRatio(value, target) {
+  if (target <= 0) return 1;
+  return Math.max(0, Math.min(value / target, 1.4)) / 1.4;
+}
+
+function goalProbabilityFromSignals({
+  historyRows,
+  recentRows,
+  totalKilometers,
+  goalKilometers,
+  requiredDailyKilometers,
+  remainingKilometers,
+  daysElapsed,
+}) {
   if (remainingKilometers <= 0) {
     return {
       available: true,
       percent: 100,
       historicalYears: historyRows.length,
       historicalDailyAverage: average(historyRows.map((row) => Number(row.kilometers || 0) / 365)),
+      recentDailyAverage: average(recentRows.map((row) => Number(row.kilometers || 0))),
+      consistencyPercent: 100,
+      paceScore: 100,
+      progressScore: 100,
+      consistencyScore: 100,
       message: "Meta ya cumplida con el avance actual.",
     };
   }
@@ -116,24 +134,52 @@ function goalProbabilityFromHistory(historyRows, requiredDailyKilometers, remain
       percent: 0,
       historicalYears: dailyAverages.length,
       historicalDailyAverage: 0,
+      recentDailyAverage: average(recentRows.map((row) => Number(row.kilometers || 0))),
+      consistencyPercent: 0,
+      paceScore: 0,
+      progressScore: 0,
+      consistencyScore: 0,
       message: "Guarda al menos un año histórico para estimar la probabilidad.",
     };
   }
 
   const historicalDailyAverage = average(dailyAverages);
-  const deviation = Math.max(standardDeviation(dailyAverages), historicalDailyAverage * 0.18, 0.01);
-  const zScore = (historicalDailyAverage - requiredDailyKilometers) / deviation;
-  const percent = Math.max(1, Math.min(99, 100 / (1 + Math.exp(-zScore))));
+  const recentWindowDays = Math.min(daysElapsed, 60);
+  const recentTotalKilometers = recentRows.reduce((sum, row) => sum + Number(row.kilometers || 0), 0);
+  const recentDailyAverage = recentWindowDays > 0 ? recentTotalKilometers / recentWindowDays : 0;
+  const activeDays = recentRows.filter((row) => Number(row.kilometers || 0) > 0).length;
+  const consistencyPercent = recentWindowDays > 0 ? Math.min((activeDays / recentWindowDays) * 100, 100) : 0;
+  const expectedByToday = goalKilometers > 0 ? (goalKilometers / 365) * daysElapsed : 0;
+  const progressScore = scoreRatio(totalKilometers, expectedByToday);
+  const recentPaceScore = scoreRatio(recentDailyAverage, requiredDailyKilometers);
+  const historyPaceScore = scoreRatio(historicalDailyAverage, requiredDailyKilometers);
+  const consistencyScore = consistencyPercent / 100;
+
+  const rawScore =
+    progressScore * 0.35 +
+    recentPaceScore * 0.35 +
+    historyPaceScore * 0.2 +
+    consistencyScore * 0.1;
+  const percent = Math.max(1, Math.min(99, rawScore * 100));
   const message =
-    requiredDailyKilometers <= historicalDailyAverage
-      ? "El ritmo necesario está dentro o por debajo de tu promedio histórico."
-      : "El ritmo necesario está por arriba de tu promedio histórico.";
+    totalKilometers >= expectedByToday && recentDailyAverage >= requiredDailyKilometers
+      ? "Vas adelantado y el ritmo reciente alcanza para llegar."
+      : totalKilometers >= expectedByToday
+        ? "Vas adelantado, pero el ritmo reciente debe sostenerse mejor."
+        : recentDailyAverage >= requiredDailyKilometers
+          ? "Vienes atrasado, pero el ritmo reciente sí alcanza."
+          : "Vas por debajo del avance esperado y del ritmo diario necesario.";
 
   return {
     available: true,
     percent,
     historicalYears: dailyAverages.length,
     historicalDailyAverage,
+    recentDailyAverage,
+    consistencyPercent,
+    paceScore: recentPaceScore * 100,
+    progressScore: progressScore * 100,
+    consistencyScore: consistencyScore * 100,
     message,
   };
 }
@@ -903,6 +949,20 @@ app.get("/api/forecast", requireDatabase, requireAuth, async (request, response,
       "SELECT year, CAST(kilometers AS DOUBLE) AS kilometers FROM historical_years WHERE user_id = ? ORDER BY year ASC",
       [request.user.id],
     );
+    const [recentRows] = await pool.execute(
+      `
+        SELECT
+          DATE_FORMAT(session_date, '%Y-%m-%d') AS sessionDate,
+          COALESCE(SUM(kilometers), 0) AS kilometers
+        FROM rowing_sessions
+        WHERE user_id = ?
+          AND session_date >= DATE_SUB(CURDATE(), INTERVAL 59 DAY)
+          AND session_date <= CURDATE()
+        GROUP BY sessionDate
+        ORDER BY sessionDate ASC
+      `,
+      [request.user.id],
+    );
     const [[baseline]] = await pool.execute(
       `
         SELECT DATE_FORMAT(seed_date, '%Y-%m-%d') AS seedDate,
@@ -934,7 +994,15 @@ app.get("/api/forecast", requireDatabase, requireAuth, async (request, response,
     const daysElapsed = dayOfYear365();
     const daysRemaining = Math.max(365 - daysElapsed, 0);
     const requiredDailyKilometers = daysRemaining > 0 ? remainingKilometers / daysRemaining : remainingKilometers;
-    const goalProbability = goalProbabilityFromHistory(historyRows, requiredDailyKilometers, remainingKilometers);
+    const goalProbability = goalProbabilityFromSignals({
+      historyRows,
+      recentRows,
+      totalKilometers,
+      goalKilometers,
+      requiredDailyKilometers,
+      remainingKilometers,
+      daysElapsed,
+    });
 
     response.json({
       year,

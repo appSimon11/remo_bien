@@ -462,7 +462,7 @@ function renderGoalProbability(probability, requiredDailyKilometers) {
   value.textContent = `${percent.toFixed(0)}%`;
   fill.style.width = `${percent}%`;
   text.textContent =
-    `${probability.message} Necesitas ${formatKm(requiredDailyKilometers)} al día; tu promedio histórico es ${formatKm(probability.historicalDailyAverage)} en ${formatNumber(probability.historicalYears)} año(s).`;
+    `${probability.message} Necesitas ${formatKm(requiredDailyKilometers)} al día. Ritmo reciente: ${formatKm(probability.recentDailyAverage)} / día; histórico: ${formatKm(probability.historicalDailyAverage)} / día; consistencia reciente: ${formatNumber(probability.consistencyPercent)}%.`;
 }
 
 function renderTodayGoalResult(kilometers) {
