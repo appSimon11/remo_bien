@@ -128,19 +128,19 @@
                 <div class="field-grid">
                   <div class="field">
                     <label for="kilometers">Kilómetros</label>
-                    <input id="kilometers" type="number" inputmode="decimal" step="0.01" min="0" placeholder="8.40" required />
+                    <input id="kilometers" type="number" inputmode="decimal" step="0.01" min="0" required />
                   </div>
                   <div class="field">
                     <label for="strokes">Paladas</label>
-                    <input id="strokes" type="number" inputmode="numeric" min="0" placeholder="6420" required />
+                    <input id="strokes" type="number" inputmode="numeric" min="0" required />
                   </div>
                   <div class="field">
                     <label for="calories">Calorías</label>
-                    <input id="calories" type="number" inputmode="decimal" step="0.01" min="0" placeholder="320" required />
+                    <input id="calories" type="number" inputmode="decimal" step="0.01" min="0" required />
                   </div>
                   <div class="field">
                     <label for="durationMinutes">Tiempo</label>
-                    <input id="durationMinutes" type="number" inputmode="numeric" min="0" placeholder="42" required />
+                    <input id="durationMinutes" type="number" inputmode="numeric" min="0" required />
                   </div>
                 </div>
                 <div class="button-row">
@@ -192,7 +192,6 @@
             <div class="panel year-map-card">
               <div class="chart-title"><span>Mapa del año</span><strong id="yearMapTitle">365 días</strong></div>
               <div class="year-map" id="yearMap"></div>
-              <div class="year-map-tooltip is-hidden" id="yearMapTooltip"></div>
               <div class="year-map-legend">
                 <span><i class="legend-done"></i> Con sesión/base</span>
                 <span><i class="legend-missed"></i> Sin sesión</span>
@@ -328,6 +327,8 @@
         </main>
       </section>
     </div>
+
+    <div class="year-map-tooltip is-hidden" id="yearMapTooltip"></div>
 
     <script src="/app.js?v=remo2-mysql-v8" type="module"></script>
   </body>

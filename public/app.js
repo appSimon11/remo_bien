@@ -13,6 +13,7 @@ const periodData = {};
 let activePeriod = "day";
 let requiredTodayKilometers = 0;
 let importRows = [];
+let sessionsList = [];
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -93,12 +94,19 @@ document.querySelectorAll(".icon-button").forEach((button) => {
   });
 });
 
+dateInput.addEventListener("change", updateDuplicateGuard);
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const editingId = $("#editingSessionId").value;
-  setMessage(editingId ? "Guardando cambios..." : "Guardando sesión...", "");
-
   const payload = readSessionForm();
+
+  if (hasSessionForDate(payload.sessionDate, editingId)) {
+    setMessage(`Ya hay una sesión guardada el ${payload.sessionDate}. Edítala desde Historial si quieres corregirla.`, "error");
+    return;
+  }
+
+  setMessage(editingId ? "Guardando cambios..." : "Guardando sesión...", "");
   try {
     const response = await api(editingId ? `/api/sessions/${editingId}` : "/api/sessions", {
       method: editingId ? "PUT" : "POST",
@@ -305,6 +313,7 @@ function fillSessionForm(row) {
   $("#durationMinutes").value = row.durationMinutes;
   $("#sessionSubmitButton").textContent = "Guardar cambios";
   $("#cancelEditButton").classList.add("is-visible");
+  updateDuplicateGuard();
 }
 
 function resetSessionForm() {
@@ -313,6 +322,22 @@ function resetSessionForm() {
   dateInput.value = todayIso;
   $("#sessionSubmitButton").textContent = "Guardar sesión";
   $("#cancelEditButton").classList.remove("is-visible");
+  updateDuplicateGuard();
+}
+
+function hasSessionForDate(date, excludeId = "") {
+  return sessionsList.some((row) => row.sessionDate === date && String(row.id) !== String(excludeId));
+}
+
+function updateDuplicateGuard() {
+  const editingId = $("#editingSessionId").value;
+  const blocked = hasSessionForDate(dateInput.value, editingId);
+  $("#sessionSubmitButton").disabled = blocked;
+  if (blocked) {
+    setMessage(`Ya hay una sesión guardada el ${dateInput.value}. Edítala desde Historial si quieres corregirla.`, "error");
+  } else if (formMessage.textContent.startsWith("Ya hay una sesión guardada")) {
+    setMessage("", "");
+  }
 }
 
 function setAuthMessage(message, type) {
@@ -393,7 +418,9 @@ async function refreshDashboard() {
 async function loadSessions() {
   const response = await api("/api/sessions?limit=120");
   if (!response.ok) return;
+  sessionsList = response.data;
   renderSessions(response.data);
+  updateDuplicateGuard();
 }
 
 async function loadForecastArea() {
