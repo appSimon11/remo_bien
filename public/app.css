@@ -12,6 +12,10 @@
   --danger: #ff6b7a;
   --radius: 14px;
   --shadow: 0 22px 80px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 8px 20px rgba(0, 0, 0, 0.32);
+  --accent-stats: linear-gradient(135deg, #1677ff, #7c5cff);
+  --accent-forecast: linear-gradient(135deg, #72dda6, #f0c54a);
+  --accent-import: linear-gradient(135deg, #ff9f43, #ff304f);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
@@ -50,6 +54,39 @@ button {
   display: none !important;
 }
 
+.wake-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+
+.wake-card {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.wake-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  animation: wake-spin 800ms linear infinite;
+}
+
+@keyframes wake-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .auth-screen {
   display: grid;
   min-height: 100vh;
@@ -65,6 +102,8 @@ button {
   padding: 28px;
   background: var(--panel);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .brand.compact {
@@ -100,7 +139,7 @@ button {
   place-items: center;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
 }
 
 .brand-mark svg {
@@ -185,6 +224,8 @@ button {
   overflow: hidden;
   background: rgba(10, 11, 14, 0.78);
   box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 aside {
@@ -213,6 +254,15 @@ aside {
   background: transparent;
   color: var(--muted);
   text-align: left;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.nav-button:hover {
+  transform: translateX(2px);
 }
 
 .nav-button.is-active,
@@ -220,6 +270,17 @@ aside {
   border-color: var(--line);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+}
+
+.nav-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 main {
@@ -265,6 +326,8 @@ main {
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .form-card {
@@ -371,6 +434,26 @@ input:focus {
   color: white;
   font-weight: 750;
   text-decoration: none;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.save-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(255, 48, 79, 0.35);
+}
+
+.save-button.import-accent {
+  background: var(--accent-import);
+}
+
+.save-button.import-accent:hover {
+  box-shadow: 0 10px 28px rgba(255, 159, 67, 0.35);
+}
+
+.save-button:active {
+  transform: translateY(0);
 }
 
 .button-row {
@@ -387,6 +470,14 @@ input:focus {
   background: rgba(255, 107, 122, 0.12);
   color: var(--danger);
   font-weight: 750;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease;
+}
+
+.danger-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 107, 122, 0.2);
 }
 
 .secondary-button {
@@ -401,12 +492,24 @@ input:focus {
   color: var(--text);
   font-weight: 750;
   text-decoration: none;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.secondary-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: color-mix(in srgb, var(--accent-2), white 25%);
 }
 
 .secondary-button:disabled,
 .save-button:disabled {
   cursor: not-allowed;
   opacity: 0.52;
+  transform: none;
+  box-shadow: none;
 }
 
 .secondary-button.small {
@@ -479,7 +582,7 @@ input:focus {
   border: 1px solid rgba(114, 221, 166, 0.4);
   border-radius: var(--radius);
   background:
-    linear-gradient(135deg, rgba(114, 221, 166, 0.13), rgba(22, 119, 255, 0.12)),
+    linear-gradient(135deg, rgba(114, 221, 166, 0.16), rgba(240, 197, 74, 0.12)),
     rgba(255, 255, 255, 0.04);
 }
 
@@ -556,6 +659,31 @@ input:focus {
 
 .year-day.is-future {
   background: rgba(255, 255, 255, 0.14);
+}
+
+.year-map-tooltip {
+  position: fixed;
+  z-index: 40;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -130%);
+}
+
+.year-day {
+  transition: transform 120ms ease;
+}
+
+.year-day:hover {
+  transform: scale(1.4);
 }
 
 .year-map-legend {
@@ -635,6 +763,16 @@ input:focus {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
   font-size: 1.3rem;
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.icon-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: color-mix(in srgb, var(--accent-2), white 30%);
 }
 
 .period-metrics {
@@ -723,6 +861,12 @@ input:focus {
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.9rem;
+  transition: background-color 150ms ease;
+}
+
+.history-row:not(.history-head):hover,
+.sessions-row:not(.sessions-head):hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .sessions-row {
@@ -759,11 +903,23 @@ input:focus {
   padding: 0 10px;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease;
+}
+
+.mini-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .mini-button.danger {
   border-color: rgba(255, 107, 122, 0.45);
   color: var(--danger);
+}
+
+.mini-button.danger:hover {
+  background: rgba(255, 107, 122, 0.18);
 }
 
 .import-errors {
@@ -813,7 +969,7 @@ input:focus {
 .bar {
   min-height: 8px;
   border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  background: var(--accent-stats);
 }
 
 .bar-label {

@@ -14,14 +14,19 @@ let activePeriod = "day";
 let requiredTodayKilometers = 0;
 let importRows = [];
 
-const today = new Date();
-const todayIso = [
-  today.getFullYear(),
-  String(today.getMonth() + 1).padStart(2, "0"),
-  String(today.getDate()).padStart(2, "0"),
-].join("-");
-
 const $ = (selector) => document.querySelector(selector);
+
+const wakeOverlay = $("#wakeOverlay");
+const wakeMessage = $("#wakeMessage");
+
+// La fecha "de hoy" sale del servidor (zona horaria CDMX), no del dispositivo del usuario.
+const serverHealth = await fetch("/api/health")
+  .then((response) => response.json())
+  .catch(() => ({}));
+const today = serverHealth.todayIso ? new Date(`${serverHealth.todayIso}T00:00:00`) : new Date();
+const todayIso =
+  serverHealth.todayIso ||
+  [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
 
 const authScreen = $("#authScreen");
 const appShell = $("#appShell");
@@ -223,8 +228,28 @@ async function api(url, options = {}) {
   return { ok: response.ok, status: response.status, data };
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForDatabase() {
+  const maxAttempts = 24;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const response = await api("/api/auth/me");
+    if (response.status !== 503) return response;
+    wakeMessage.textContent =
+      attempt === 0
+        ? "Despertando el servidor y la base de datos..."
+        : "Railway está tardando en despertar la base de datos, un momento más...";
+    await sleep(1600);
+  }
+  wakeMessage.textContent = "Está tardando más de lo normal. Reintentando...";
+  return api("/api/auth/me");
+}
+
 async function boot() {
-  const response = await api("/api/auth/me");
+  const response = await waitForDatabase();
+  wakeOverlay.classList.add("is-hidden");
   if (response.ok && response.data.authenticated) {
     enterApp(response.data.user);
   } else {
@@ -526,12 +551,33 @@ function renderHistory(rows) {
   `;
 }
 
+const yearMapStatusLabels = { done: "Con sesión/base", missed: "Sin sesión", future: "Próximo" };
+
 function renderYearMap(data) {
   $("#yearMapTitle").textContent = `${data.year} · día ${data.todayIndex}`;
   $("#yearMap").innerHTML = data.days
-    .map((day) => `<span class="year-day is-${day.status}" title="Día ${day.index} · ${day.date}" aria-label="Día ${day.index}: ${day.status}"></span>`)
+    .map(
+      (day) =>
+        `<span class="year-day is-${day.status}" data-date="${day.date}" data-status="${day.status}" aria-label="Día ${day.index}: ${day.status}"></span>`,
+    )
     .join("");
 }
+
+const yearMapTooltip = $("#yearMapTooltip");
+
+$("#yearMap").addEventListener("mousemove", (event) => {
+  const cell = event.target.closest(".year-day");
+  if (!cell) {
+    yearMapTooltip.classList.add("is-hidden");
+    return;
+  }
+  yearMapTooltip.textContent = `${cell.dataset.date} · ${yearMapStatusLabels[cell.dataset.status] || cell.dataset.status}`;
+  yearMapTooltip.style.left = `${event.clientX}px`;
+  yearMapTooltip.style.top = `${event.clientY}px`;
+  yearMapTooltip.classList.remove("is-hidden");
+});
+
+$("#yearMap").addEventListener("mouseleave", () => yearMapTooltip.classList.add("is-hidden"));
 
 function renderChart(chartId, rows, key, formatterFn) {
   const chart = $(`#${chartId}`);

@@ -4,20 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Remo2</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/app.css?v=remo2-mysql-v8" />
   </head>
   <body>
-    <section class="auth-screen" id="authScreen">
+    <div class="wake-overlay" id="wakeOverlay">
+      <div class="wake-card">
+        <div class="wake-spinner" aria-hidden="true"></div>
+        <p id="wakeMessage">Conectando con el servidor…</p>
+      </div>
+    </div>
+
+    <section class="auth-screen is-hidden" id="authScreen">
       <form class="auth-card" id="authForm">
         <div class="brand compact">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="img">
-              <circle cx="31" cy="15" r="6"></circle>
-              <path d="M23 25 L35 25 L43 37"></path>
-              <path d="M32 27 L21 39"></path>
-              <path d="M37 30 L51 22"></path>
-              <path d="M13 47 C25 53 39 53 52 47"></path>
-              <path d="M18 42 L49 42"></path>
+              <line x1="16" y1="16" x2="48" y2="48" stroke-width="7"></line>
+              <line x1="48" y1="16" x2="16" y2="48" stroke-width="7"></line>
+              <ellipse cx="13" cy="13" rx="9" ry="5.5" transform="rotate(45 13 13)" fill="white" stroke="none"></ellipse>
+              <ellipse cx="51" cy="13" rx="9" ry="5.5" transform="rotate(-45 51 13)" fill="white" stroke="none"></ellipse>
             </svg>
           </div>
           <div>
@@ -46,12 +54,10 @@
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="img">
-              <circle cx="31" cy="15" r="6"></circle>
-              <path d="M23 25 L35 25 L43 37"></path>
-              <path d="M32 27 L21 39"></path>
-              <path d="M37 30 L51 22"></path>
-              <path d="M13 47 C25 53 39 53 52 47"></path>
-              <path d="M18 42 L49 42"></path>
+              <line x1="16" y1="16" x2="48" y2="48" stroke-width="7"></line>
+              <line x1="48" y1="16" x2="16" y2="48" stroke-width="7"></line>
+              <ellipse cx="13" cy="13" rx="9" ry="5.5" transform="rotate(45 13 13)" fill="white" stroke="none"></ellipse>
+              <ellipse cx="51" cy="13" rx="9" ry="5.5" transform="rotate(-45 51 13)" fill="white" stroke="none"></ellipse>
             </svg>
           </div>
           <div>
@@ -75,11 +81,26 @@
       <section class="app-frame">
         <aside>
           <div class="nav-title" id="userLabel">Usuario</div>
-          <button class="nav-button is-active" data-screen="session" type="button"><span>+</span>Guardar sesión</button>
-          <button class="nav-button" data-screen="history" type="button"><span>≡</span>Historial</button>
-          <button class="nav-button" data-screen="stats" type="button"><span>▥</span>Estadísticas</button>
-          <button class="nav-button" data-screen="forecast" type="button"><span>↗</span>Histórico / Forecast</button>
-          <button class="nav-button" data-screen="import" type="button"><span>⇅</span>Importar / Exportar</button>
+          <button class="nav-button is-active" data-screen="session" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Guardar sesión
+          </button>
+          <button class="nav-button" data-screen="history" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+            Historial
+          </button>
+          <button class="nav-button" data-screen="stats" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11M12 20V4M20 20v-7"/></svg>
+            Estadísticas
+          </button>
+          <button class="nav-button" data-screen="forecast" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M14 7h7v7"/></svg>
+            Histórico / Forecast
+          </button>
+          <button class="nav-button" data-screen="import" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v14M8 3L4 7M8 3l4 4M16 21V7M16 21l-4-4M16 21l4-4"/></svg>
+            Importar / Exportar
+          </button>
         </aside>
 
         <main>
@@ -171,6 +192,7 @@
             <div class="panel year-map-card">
               <div class="chart-title"><span>Mapa del año</span><strong id="yearMapTitle">365 días</strong></div>
               <div class="year-map" id="yearMap"></div>
+              <div class="year-map-tooltip is-hidden" id="yearMapTooltip"></div>
               <div class="year-map-legend">
                 <span><i class="legend-done"></i> Con sesión/base</span>
                 <span><i class="legend-missed"></i> Sin sesión</span>
@@ -281,7 +303,7 @@
               <div class="panel form-card">
                 <h3>Exportar y plantilla</h3>
                 <div class="button-stack">
-                  <a class="save-button link-button" href="/api/sessions/export.csv">Exportar mis sesiones</a>
+                  <a class="save-button link-button import-accent" href="/api/sessions/export.csv">Exportar mis sesiones</a>
                   <a class="secondary-button link-button" href="/api/import-template.csv">Descargar plantilla</a>
                 </div>
               </div>

@@ -5,7 +5,7 @@ import mysql from "mysql2/promise";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-process.env.TZ ||= process.env.APP_TIME_ZONE || "America/Mexico_City";
+process.env.TZ = process.env.APP_TIME_ZONE || "America/Mexico_City";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -577,6 +577,7 @@ app.get("/api/health", (_request, response) => {
     databaseReady,
     lastDatabaseError,
     timeZone: process.env.TZ,
+    todayIso: toIsoDate(new Date()),
   });
 });
 
@@ -842,6 +843,7 @@ app.get("/api/stats", requireDatabase, requireAuth, async (request, response, ne
 
 app.get("/api/history-years", requireDatabase, requireAuth, async (request, response, next) => {
   try {
+    await ensureYearRollover(request.user.id);
     const [rows] = await pool.execute(
       `
         SELECT
@@ -883,6 +885,46 @@ app.post("/api/history-years", requireDatabase, requireAuth, async (request, res
     next(error);
   }
 });
+
+async function ensureYearRollover(userId) {
+  const year = currentYear();
+  const previousYear = year - 1;
+  const [[existing]] = await pool.execute(
+    "SELECT 1 AS found FROM historical_years WHERE user_id = ? AND year = ?",
+    [userId, previousYear],
+  );
+  if (existing) return;
+
+  const [[baseline]] = await pool.execute(
+    `
+      SELECT CAST(initial_kilometers AS DOUBLE) AS initialKilometers, initial_duration_minutes AS initialDurationMinutes
+      FROM current_year_baselines
+      WHERE user_id = ? AND year = ?
+    `,
+    [userId, previousYear],
+  );
+  const [[sessionsTotal]] = await pool.execute(
+    `
+      SELECT COALESCE(SUM(kilometers), 0) AS kilometers, COALESCE(SUM(duration_minutes), 0) AS durationMinutes
+      FROM rowing_sessions
+      WHERE user_id = ? AND YEAR(session_date) = ?
+    `,
+    [userId, previousYear],
+  );
+
+  const totalKilometers = Number(baseline?.initialKilometers || 0) + Number(sessionsTotal.kilometers || 0);
+  const totalDurationMinutes = Number(baseline?.initialDurationMinutes || 0) + Number(sessionsTotal.durationMinutes || 0);
+  if (totalKilometers <= 0 && totalDurationMinutes <= 0) return;
+
+  await pool.execute(
+    `
+      INSERT INTO historical_years (user_id, year, kilometers, duration_minutes)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE kilometers = VALUES(kilometers), duration_minutes = VALUES(duration_minutes)
+    `,
+    [userId, previousYear, totalKilometers, totalDurationMinutes],
+  );
+}
 
 async function resetCurrentYear(request, response, next) {
   const connection = await pool.getConnection();
@@ -939,6 +981,7 @@ app.post("/api/current-year-reset", requireDatabase, requireAuth, resetCurrentYe
 
 app.get("/api/forecast", requireDatabase, requireAuth, async (request, response, next) => {
   try {
+    await ensureYearRollover(request.user.id);
     const year = currentYear();
     const previousYear = year - 1;
     const [[previous]] = await pool.execute(
