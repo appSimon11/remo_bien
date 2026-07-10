@@ -25,9 +25,14 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
 }
@@ -229,6 +234,7 @@ button {
 }
 
 aside {
+  min-width: 0;
   border-right: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.03);
   padding: 24px;
@@ -284,6 +290,7 @@ aside {
 }
 
 main {
+  min-width: 0;
   padding: clamp(22px, 4vw, 42px);
 }
 
@@ -635,12 +642,18 @@ input:focus {
   padding: 22px;
 }
 
+.year-map-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 18px;
+}
+
 .year-map {
   display: grid;
   grid-template-columns: repeat(73, minmax(4px, 1fr));
   grid-template-rows: repeat(5, 8px);
   gap: 4px;
-  margin-top: 18px;
+  min-width: 520px;
 }
 
 .year-day {
@@ -1044,9 +1057,5 @@ input:focus {
 
   .chart {
     height: 190px;
-  }
-
-  .year-map {
-    gap: 3px;
   }
 }
