@@ -245,13 +245,10 @@ async function waitForDatabase() {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const response = await api("/api/auth/me");
     if (response.status !== 503) return response;
-    wakeMessage.textContent =
-      attempt === 0
-        ? "Despertando el servidor y la base de datos..."
-        : "Railway está tardando en despertar la base de datos, un momento más...";
+    wakeMessage.textContent = "Cargando datos...";
     await sleep(1600);
   }
-  wakeMessage.textContent = "Está tardando más de lo normal. Reintentando...";
+  wakeMessage.textContent = "Cargando datos...";
   return api("/api/auth/me");
 }
 
