@@ -810,10 +810,24 @@ app.get("/api/stats", requireDatabase, requireAuth, async (request, response, ne
     );
 
     const row = summaryRow || {};
-    const kilometers = Number(row.kilometers || 0);
-    const durationMinutes = Number(row.durationMinutes || 0);
+    let kilometers = Number(row.kilometers || 0);
+    let durationMinutes = Number(row.durationMinutes || 0);
     const strokes = Number(row.strokes || 0);
     const calories = Number(row.calories || 0);
+
+    if (period === "year") {
+      const [[baseline]] = await pool.execute(
+        `
+          SELECT CAST(initial_kilometers AS DOUBLE) AS initialKilometers, initial_duration_minutes AS initialDurationMinutes
+          FROM current_year_baselines
+          WHERE user_id = ? AND year = ?
+        `,
+        [request.user.id, range.start.getFullYear()],
+      );
+      kilometers += Number(baseline?.initialKilometers || 0);
+      durationMinutes += Number(baseline?.initialDurationMinutes || 0);
+    }
+
     response.json({
       period,
       range: { start, end, title: rangeTitle(period, range.start, range.end) },
