@@ -538,9 +538,10 @@ function renderSessions(rows) {
 }
 
 function renderSessionRow(row) {
+  const liveBadge = row.source === "live" ? `<span class="live-badge" title="${row.programName || "Sesión en vivo"}">Vivo</span>` : "";
   return `
     <div class="sessions-row" data-session='${JSON.stringify(row)}'>
-      <span>${row.sessionDate}</span>
+      <span>${row.sessionDate} ${liveBadge}</span>
       <span>${formatKm(row.kilometers)}</span>
       <span>${formatMinutes(row.durationMinutes)}</span>
       <span>${formatPace(row.pace500m)}</span>

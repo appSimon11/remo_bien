@@ -386,6 +386,19 @@ async function initializeDatabase() {
   await addColumnIfMissing("rowing_sessions", "user_id", "user_id INT NULL");
   await addColumnIfMissing("rowing_sessions", "calories", "calories DECIMAL(8, 2) NOT NULL DEFAULT 0");
   await addColumnIfMissing("rowing_sessions", "duration_minutes", "duration_minutes INT NOT NULL DEFAULT 0");
+
+  // Campos adicionales para sesiones capturadas en vivo por Bluetooth (RowDash).
+  // Todos nullable: las sesiones manuales existentes no se ven afectadas.
+  await addColumnIfMissing("rowing_sessions", "source", "source VARCHAR(10) NOT NULL DEFAULT 'manual'");
+  await addColumnIfMissing("rowing_sessions", "duration_seconds", "duration_seconds INT NULL");
+  await addColumnIfMissing("rowing_sessions", "avg_spm", "avg_spm DECIMAL(6, 2) NULL");
+  await addColumnIfMissing("rowing_sessions", "avg_power_w", "avg_power_w DECIMAL(8, 2) NULL");
+  await addColumnIfMissing("rowing_sessions", "avg_pace_sec500m", "avg_pace_sec500m DECIMAL(8, 2) NULL");
+  await addColumnIfMissing("rowing_sessions", "avg_heart_rate", "avg_heart_rate DECIMAL(6, 2) NULL");
+  await addColumnIfMissing("rowing_sessions", "program_name", "program_name VARCHAR(120) NULL");
+  await addColumnIfMissing("rowing_sessions", "metronome_bpm", "metronome_bpm INT NULL");
+  await addColumnIfMissing("rowing_sessions", "raw_samples_json", "raw_samples_json LONGTEXT NULL");
+
   await addColumnIfMissing("historical_years", "user_id", "user_id INT NULL");
   await addColumnIfMissing("current_year_baselines", "user_id", "user_id INT NULL");
   await pool.execute("UPDATE rowing_sessions SET user_id = ? WHERE user_id IS NULL", [defaultUserId]);
@@ -482,10 +495,50 @@ function sessionSelectSql(where) {
       CASE WHEN kilometers > 0 THEN duration_minutes / kilometers / 2 ELSE 0 END AS pace500m,
       CASE WHEN duration_minutes > 0 THEN strokes / duration_minutes ELSE 0 END AS strokesPerMinute,
       CASE WHEN kilometers > 0 THEN CAST(calories AS DOUBLE) / CAST(kilometers AS DOUBLE) ELSE 0 END AS caloriesPerKm,
+      source,
+      duration_seconds AS durationSeconds,
+      CAST(avg_spm AS DOUBLE) AS avgSpm,
+      CAST(avg_power_w AS DOUBLE) AS avgPowerW,
+      CAST(avg_pace_sec500m AS DOUBLE) AS avgPaceSec500m,
+      CAST(avg_heart_rate AS DOUBLE) AS avgHeartRate,
+      program_name AS programName,
+      metronome_bpm AS metronomeBpm,
       created_at
     FROM rowing_sessions
     ${where}
   `;
+}
+
+function validateLiveSessionPayload(body) {
+  const km = Number(body.kilometers);
+  const totalStrokes = Number.parseInt(body.strokes, 10) || 0;
+  const totalCalories = Number(body.calories) || 0;
+  const durationSeconds = Number.parseInt(body.durationSeconds, 10);
+  const date = body.sessionDate || toIsoDate(new Date());
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Captura una fecha válida." };
+  if (!Number.isFinite(km) || km < 0) return { error: "Distancia inválida." };
+  if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) return { error: "Duración inválida." };
+
+  const optionalNumber = (value) => (value === null || value === undefined || value === "" ? null : Number(value));
+
+  return {
+    row: {
+      sessionDate: date,
+      kilometers: km,
+      strokes: totalStrokes,
+      calories: totalCalories,
+      durationMinutes: Math.max(1, Math.round(durationSeconds / 60)),
+      durationSeconds,
+      avgSpm: optionalNumber(body.avgSpm),
+      avgPowerW: optionalNumber(body.avgPowerW),
+      avgPaceSec500m: optionalNumber(body.avgPaceSec500m),
+      avgHeartRate: optionalNumber(body.avgHeartRate),
+      programName: body.programName ? String(body.programName).slice(0, 120) : null,
+      metronomeBpm: body.metronomeBpm != null && body.metronomeBpm !== "" ? Number.parseInt(body.metronomeBpm, 10) : null,
+      samples: Array.isArray(body.samples) ? body.samples : [],
+    },
+  };
 }
 
 function csvEscape(value) {
@@ -670,6 +723,56 @@ app.post("/api/sessions", requireDatabase, requireAuth, async (request, response
     );
     const [[created]] = await pool.execute(`${sessionSelectSql("WHERE id = ? AND user_id = ?")}`, [insert.insertId, request.user.id]);
     response.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const result = validateLiveSessionPayload(request.body);
+    if (result.error) return response.status(400).json({ message: result.error });
+    const row = result.row;
+    const [insert] = await pool.execute(
+      `
+        INSERT INTO rowing_sessions
+          (user_id, session_date, kilometers, strokes, calories, duration_minutes,
+           source, duration_seconds, avg_spm, avg_power_w, avg_pace_sec500m, avg_heart_rate,
+           program_name, metronome_bpm, raw_samples_json)
+        VALUES (?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        request.user.id,
+        row.sessionDate,
+        row.kilometers,
+        row.strokes,
+        row.calories,
+        row.durationMinutes,
+        row.durationSeconds,
+        row.avgSpm,
+        row.avgPowerW,
+        row.avgPaceSec500m,
+        row.avgHeartRate,
+        row.programName,
+        row.metronomeBpm,
+        JSON.stringify(row.samples),
+      ],
+    );
+    const [[created]] = await pool.execute(`${sessionSelectSql("WHERE id = ? AND user_id = ?")}`, [insert.insertId, request.user.id]);
+    response.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/live-sessions/:id/samples", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const [[row]] = await pool.execute("SELECT raw_samples_json FROM rowing_sessions WHERE id = ? AND user_id = ?", [
+      request.params.id,
+      request.user.id,
+    ]);
+    if (!row) return response.status(404).json({ message: "No encontré esa sesión." });
+    response.json({ samples: row.raw_samples_json ? JSON.parse(row.raw_samples_json) : [] });
   } catch (error) {
     next(error);
   }

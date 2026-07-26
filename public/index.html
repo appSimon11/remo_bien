@@ -85,6 +85,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
             Guardar sesión
           </button>
+          <button class="nav-button" data-screen="live" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
+            Remo en vivo
+          </button>
           <button class="nav-button" data-screen="history" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
             Historial
@@ -164,6 +168,121 @@
                   <p id="goalProbabilityText">Agrega histórico para calcularla.</p>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section class="screen" data-view="live">
+            <div class="screen-header">
+              <div>
+                <h2>Remo en vivo</h2>
+                <p>Conecta la remadora por Bluetooth y captura la sesión directo a tu historial.</p>
+              </div>
+              <div id="liveConnState" class="live-pill live-pill-off">Desconectado</div>
+            </div>
+
+            <!-- Live: setup -->
+            <div id="liveScreenSetup" class="live-screen live-screen-active">
+              <div class="entry-grid">
+                <div class="panel form-card">
+                  <button id="liveBtnConnect" class="save-button" type="button">Conectar remadora (Bluetooth)</button>
+                  <p id="liveDeviceName" class="live-muted"></p>
+                  <button id="liveBtnConnectHr" class="save-button" type="button">Conectar banda de FC (Bluetooth)</button>
+                  <p id="liveHrDeviceName" class="live-muted"></p>
+
+                  <div class="live-card">
+                    <h3>Metrónomo</h3>
+                    <div class="field-row">
+                      <span>Ritmo objetivo (SPM)</span>
+                      <div class="live-stepper">
+                        <button type="button" class="live-btn-step" data-step="-1">−</button>
+                        <input id="liveMetroBpm" type="number" value="22" min="10" max="40" />
+                        <button type="button" class="live-btn-step" data-step="1">+</button>
+                      </div>
+                    </div>
+                    <div class="field-row">
+                      <span>Activar metrónomo</span>
+                      <input id="liveMetroEnabled" type="checkbox" checked />
+                    </div>
+                  </div>
+
+                  <button id="liveBtnStart" class="save-button" type="button" disabled>Iniciar sesión libre</button>
+                  <button id="liveBtnPrograms" class="secondary-button" type="button">Programas de entrenamiento</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live: lista de programas -->
+            <div id="liveScreenPrograms" class="live-screen">
+              <p class="live-muted">Se pueden crear sin conectar la remadora ni la banda de FC.</p>
+              <button id="liveBtnNewProgram" class="save-button" type="button">+ Nuevo programa</button>
+              <div id="liveProgramsList" class="live-list"></div>
+              <button id="liveBtnProgramsBack" class="secondary-button" type="button">Volver</button>
+            </div>
+
+            <!-- Live: editor de programa -->
+            <div id="liveScreenProgramEditor" class="live-screen">
+              <div class="field">
+                <label for="liveProgramName">Nombre</label>
+                <input id="liveProgramName" type="text" placeholder="Ej. Pirámide 22-26-30" />
+              </div>
+              <div class="live-card">
+                <h3>Agregar tramo</h3>
+                <div class="live-segment-form">
+                  <label>Min <input id="liveSegMin" type="number" value="5" min="0" max="120" /></label>
+                  <label>Seg <input id="liveSegSec" type="number" value="0" min="0" max="59" step="5" /></label>
+                  <label>SPM <input id="liveSegSpm" type="number" value="22" min="10" max="40" /></label>
+                  <button id="liveBtnAddSegment" class="mini-button" type="button">Agregar</button>
+                </div>
+              </div>
+              <div id="liveSegmentsList" class="live-list"></div>
+              <p id="liveProgramTotal" class="live-muted"></p>
+              <button id="liveBtnSaveProgram" class="save-button" type="button">Guardar programa</button>
+              <button id="liveBtnCancelProgram" class="secondary-button" type="button">Cancelar</button>
+            </div>
+
+            <!-- Live: sesión en curso -->
+            <div id="liveScreenWorkout" class="live-screen">
+              <div id="liveProgramBanner" class="live-card live-program-banner" style="display:none;">
+                <div class="field-row"><strong id="liveProgramSegmentLabel">Tramo 1/1</strong><span id="liveProgramSegmentTime">00:00</span></div>
+                <p id="liveProgramNextLabel" class="live-muted"></p>
+              </div>
+
+              <div class="live-metrics-row live-row-3">
+                <div class="live-metric"><span class="live-metric-value" id="liveMTime">00:00</span><span class="live-metric-label">Tiempo</span></div>
+                <div class="live-metric"><span class="live-metric-value" id="liveMPace">--:--</span><span class="live-metric-label">/500m</span></div>
+                <div class="live-metric"><span class="live-metric-value" id="liveMPower">0</span><span class="live-metric-label">Watts</span></div>
+              </div>
+              <div class="live-metrics-row live-row-2">
+                <div class="live-metric"><span class="live-metric-value" id="liveMSpm">0</span><span class="live-metric-label">SPM</span></div>
+                <div class="live-metric"><span class="live-metric-value" id="liveMDistance">0.00</span><span class="live-metric-label">Km</span></div>
+              </div>
+              <div class="live-metrics-row live-row-3">
+                <div class="live-metric"><span class="live-metric-value" id="liveMCal">0</span><span class="live-metric-label">Kcal</span></div>
+                <div class="live-metric"><span class="live-metric-value" id="liveMHr">--</span><span class="live-metric-label">BPM ❤</span></div>
+                <div class="live-metric"><span class="live-metric-value" id="liveMStrokes">0</span><span class="live-metric-label">Remadas</span></div>
+              </div>
+
+              <div class="live-card">
+                <div class="field-row">
+                  <span>Metrónomo</span>
+                  <button id="liveBtnMetroToggle" class="mini-button" type="button">Pausar</button>
+                </div>
+                <div class="live-stroke-track"><div id="liveStrokeFill" class="live-stroke-fill"></div></div>
+                <div class="live-metro-control">
+                  <button id="liveMetroDown" class="live-metro-arrow" type="button">‹</button>
+                  <span id="liveMetroLive" class="live-metro-bpm">22 SPM</span>
+                  <button id="liveMetroUp" class="live-metro-arrow" type="button">›</button>
+                </div>
+              </div>
+
+              <button id="liveBtnStop" class="danger-button" type="button">Finalizar sesión</button>
+            </div>
+
+            <!-- Live: resumen -->
+            <div id="liveScreenSummary" class="live-screen">
+              <div id="liveSummaryBox" class="panel live-summary-box"></div>
+              <button id="liveBtnShare" class="save-button" type="button">Compartir (Fotos / Notas...)</button>
+              <button id="liveBtnBackHome" class="secondary-button" type="button">Volver</button>
             </div>
           </section>
 
@@ -332,6 +451,7 @@
 
     <div class="year-map-tooltip is-hidden" id="yearMapTooltip"></div>
 
+    <script src="/live.js?v=1" type="module"></script>
     <script src="/app.js?v=remo2-mysql-v8" type="module"></script>
   </body>
 </html>

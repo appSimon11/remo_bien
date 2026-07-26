@@ -909,6 +909,19 @@ input:focus {
   gap: 8px;
 }
 
+.live-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(22, 119, 255, 0.18);
+  color: var(--accent-2);
+  vertical-align: middle;
+}
+
 .mini-button {
   min-height: 34px;
   border: 1px solid var(--line);
@@ -1058,4 +1071,190 @@ input:focus {
   .chart {
     height: 190px;
   }
+}
+
+/* ===================== Remo en vivo ===================== */
+.live-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  align-self: flex-start;
+}
+.live-pill-off { background: rgba(255, 107, 122, 0.15); color: var(--danger); }
+.live-pill-on { background: rgba(114, 221, 166, 0.15); color: var(--good); }
+
+.live-screen { display: none; }
+.live-screen.live-screen-active { display: block; }
+
+.live-muted { color: var(--muted); font-size: 13px; }
+
+.live-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 14px 0;
+}
+.live-card h3 { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.field-row:last-child { margin-bottom: 0; }
+.field-row input[type="checkbox"] { width: 20px; height: 20px; }
+
+.live-stepper { display: flex; align-items: center; gap: 8px; }
+.live-stepper input {
+  width: 56px;
+  text-align: center;
+  font-size: 18px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.live-btn-step {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 18px;
+}
+
+.live-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+.live-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.live-list-item .live-item-actions { display: flex; gap: 6px; }
+
+.live-segment-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.live-segment-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.live-segment-form input {
+  width: 64px;
+  text-align: center;
+  font-size: 16px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.live-program-banner { border-color: var(--accent-2); }
+
+.live-metrics-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.live-row-3 { grid-template-columns: repeat(3, 1fr); }
+.live-row-2 { grid-template-columns: repeat(2, 1fr); }
+.live-row-2 .live-metric-value { font-size: 46px; }
+
+.live-metric {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 10px;
+  text-align: center;
+}
+.live-metric-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.live-metric-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+.live-stroke-track {
+  position: relative;
+  height: 26px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.live-stroke-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  border-radius: 13px;
+  background: linear-gradient(90deg, var(--accent-2), var(--good));
+}
+.live-stroke-fill.animate {
+  animation-name: liveStrokeCycle;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes liveStrokeCycle {
+  0%   { width: 0%; }
+  35%  { width: 100%; }
+  100% { width: 0%; }
+}
+
+.live-metro-control { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.live-metro-arrow {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 700;
+}
+.live-metro-arrow:active { background: var(--accent-2); }
+.live-metro-bpm { flex: 1; text-align: center; font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.live-summary-box .live-summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.live-summary-box .live-summary-row:last-child { border-bottom: none; }
+
+@media (min-width: 820px) {
+  #liveScreenWorkout.live-screen-active {
+    display: flex;
+    flex-direction: column;
+  }
+  .live-metrics-row { flex: 1; margin-bottom: 0; }
+  .live-metrics-row { display: flex; }
+  .live-metric { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  .live-row-2 .live-metric-value { font-size: 72px; }
+  .live-metric-value { font-size: 48px; }
 }
