@@ -89,6 +89,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>
             Remo en vivo
           </button>
+          <button class="nav-button" data-screen="programs" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+            Programas
+          </button>
           <button class="nav-button" data-screen="history" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
             Historial
@@ -206,38 +210,9 @@
                   </div>
 
                   <button id="liveBtnStart" class="save-button" type="button" disabled>Iniciar sesión libre</button>
-                  <button id="liveBtnPrograms" class="secondary-button" type="button">Programas de entrenamiento</button>
+                  <a class="secondary-button link-button" href="#" data-goto-screen="programs">Ver programas de entrenamiento</a>
                 </div>
               </div>
-            </div>
-
-            <!-- Live: lista de programas -->
-            <div id="liveScreenPrograms" class="live-screen">
-              <p class="live-muted">Se pueden crear sin conectar la remadora ni la banda de FC.</p>
-              <button id="liveBtnNewProgram" class="save-button" type="button">+ Nuevo programa</button>
-              <div id="liveProgramsList" class="live-list"></div>
-              <button id="liveBtnProgramsBack" class="secondary-button" type="button">Volver</button>
-            </div>
-
-            <!-- Live: editor de programa -->
-            <div id="liveScreenProgramEditor" class="live-screen">
-              <div class="field">
-                <label for="liveProgramName">Nombre</label>
-                <input id="liveProgramName" type="text" placeholder="Ej. Pirámide 22-26-30" />
-              </div>
-              <div class="live-card">
-                <h3>Agregar tramo</h3>
-                <div class="live-segment-form">
-                  <label>Min <input id="liveSegMin" type="number" value="5" min="0" max="120" /></label>
-                  <label>Seg <input id="liveSegSec" type="number" value="0" min="0" max="59" step="5" /></label>
-                  <label>SPM <input id="liveSegSpm" type="number" value="22" min="10" max="40" /></label>
-                  <button id="liveBtnAddSegment" class="mini-button" type="button">Agregar</button>
-                </div>
-              </div>
-              <div id="liveSegmentsList" class="live-list"></div>
-              <p id="liveProgramTotal" class="live-muted"></p>
-              <button id="liveBtnSaveProgram" class="save-button" type="button">Guardar programa</button>
-              <button id="liveBtnCancelProgram" class="secondary-button" type="button">Cancelar</button>
             </div>
 
             <!-- Live: sesión en curso -->
@@ -283,6 +258,42 @@
               <div id="liveSummaryBox" class="panel live-summary-box"></div>
               <button id="liveBtnShare" class="save-button" type="button">Compartir (Fotos / Notas...)</button>
               <button id="liveBtnBackHome" class="secondary-button" type="button">Volver</button>
+            </div>
+          </section>
+
+          <section class="screen" data-view="programs">
+            <div class="screen-header">
+              <div>
+                <h2>Programas de entrenamiento</h2>
+                <p>Arma tramos de SPM por tiempo (ej. 5 min @ 22, 10 min @ 26...). Se usan al iniciar una sesión en Remo en vivo. Se pueden crear sin conectar la remadora ni la banda de FC.</p>
+              </div>
+            </div>
+
+            <!-- Programas: lista -->
+            <div id="liveScreenPrograms" class="live-screen live-screen-active">
+              <button id="liveBtnNewProgram" class="save-button" type="button">+ Nuevo programa</button>
+              <div id="liveProgramsList" class="live-list"></div>
+            </div>
+
+            <!-- Programas: editor -->
+            <div id="liveScreenProgramEditor" class="live-screen">
+              <div class="field">
+                <label for="liveProgramName">Nombre</label>
+                <input id="liveProgramName" type="text" placeholder="Ej. Pirámide 22-26-30" />
+              </div>
+              <div class="live-card">
+                <h3>Agregar tramo</h3>
+                <div class="live-segment-form">
+                  <label>Min <input id="liveSegMin" type="number" value="5" min="0" max="120" /></label>
+                  <label>Seg <input id="liveSegSec" type="number" value="0" min="0" max="59" step="5" /></label>
+                  <label>SPM <input id="liveSegSpm" type="number" value="22" min="10" max="40" /></label>
+                  <button id="liveBtnAddSegment" class="mini-button" type="button">Agregar</button>
+                </div>
+              </div>
+              <div id="liveSegmentsList" class="live-list"></div>
+              <p id="liveProgramTotal" class="live-muted"></p>
+              <button id="liveBtnSaveProgram" class="save-button" type="button">Guardar programa</button>
+              <button id="liveBtnCancelProgram" class="secondary-button" type="button">Cancelar</button>
             </div>
           </section>
 

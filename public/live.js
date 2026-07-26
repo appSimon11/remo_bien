@@ -44,9 +44,18 @@ function fmtPace(secPer500m) {
   return fmtTime(secPer500m);
 }
 
+function goToTopScreen(name) {
+  const navBtn = document.querySelector(`.nav-button[data-screen="${name}"]`);
+  if (navBtn) navBtn.click(); // reutiliza showScreen() de app.js
+}
+
 function setLiveScreen(name) {
-  document.querySelectorAll(".live-screen").forEach((el) => el.classList.remove("live-screen-active"));
-  $(`liveScreen${name}`).classList.add("live-screen-active");
+  // Solo togglea los paneles dentro de la MISMA pestaña principal (Remo en vivo vs Programas),
+  // así cambiar de pestaña para ver programas no pierde el progreso de una sesión en curso.
+  const target = $(`liveScreen${name}`);
+  const scope = target.closest(".screen") || document;
+  scope.querySelectorAll(".live-screen").forEach((el) => el.classList.remove("live-screen-active"));
+  target.classList.add("live-screen-active");
 }
 
 // ---------- FTMS parsing ----------
@@ -552,9 +561,11 @@ function renderProgramsList() {
 
   el.querySelectorAll(".btnRunProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (!state.device) return alert("Conecta la remadora primero.");
+      if (!state.device) return alert("Conecta la remadora primero (pestaña Remo en vivo).");
       const program = programs.find((p) => p.id === btn.dataset.id);
-      if (program) startSession(program);
+      if (!program) return;
+      goToTopScreen("live");
+      startSession(program);
     });
   });
   el.querySelectorAll(".btnEditProgram").forEach((btn) => {
@@ -679,8 +690,18 @@ $("liveBtnMetroToggle").addEventListener("click", () => {
 $("liveBtnShare").addEventListener("click", () => shareSummary(state.lastSummary));
 $("liveBtnBackHome").addEventListener("click", () => setLiveScreen("Setup"));
 
-$("liveBtnPrograms").addEventListener("click", () => { renderProgramsList(); setLiveScreen("Programs"); });
-$("liveBtnProgramsBack").addEventListener("click", () => setLiveScreen("Setup"));
+document.querySelectorAll('[data-goto-screen="programs"]').forEach((el) => {
+  el.addEventListener("click", (e) => {
+    e.preventDefault();
+    renderProgramsList();
+    setLiveScreen("Programs");
+    goToTopScreen("programs");
+  });
+});
+document.querySelector('.nav-button[data-screen="programs"]').addEventListener("click", () => {
+  setLiveScreen("Programs");
+  renderProgramsList();
+});
 $("liveBtnNewProgram").addEventListener("click", () => openProgramEditor(null));
 $("liveBtnAddSegment").addEventListener("click", addSegment);
 $("liveBtnSaveProgram").addEventListener("click", saveProgramFromEditor);
