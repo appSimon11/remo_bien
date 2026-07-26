@@ -6,8 +6,6 @@ const ROWER_DATA_CHAR = "00002ad1-0000-1000-8000-00805f9b34fb";
 const HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb";
 const HEART_RATE_CHAR = "00002a37-0000-1000-8000-00805f9b34fb";
 
-const PROGRAMS_KEY = "remo2_live_programs_v1";
-
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -531,16 +529,34 @@ async function shareSummary(summary) {
   }, "image/png");
 }
 
-// ---------- Programas (guardados en este dispositivo) ----------
+// ---------- Programas (guardados en el servidor, ligados a tu cuenta) ----------
+async function programsApi(url, options = {}) {
+  const response = await fetch(url, {
+    method: options.method || "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : {},
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Error del servidor");
+  return data;
+}
+
 function loadPrograms() {
-  try { return JSON.parse(localStorage.getItem(PROGRAMS_KEY)) || []; } catch { return []; }
+  return programsApi("/api/programs");
 }
-function savePrograms(programs) {
-  localStorage.setItem(PROGRAMS_KEY, JSON.stringify(programs));
-}
-function renderProgramsList() {
-  const programs = loadPrograms();
+
+async function renderProgramsList() {
   const el = $("liveProgramsList");
+  el.innerHTML = `<p class="live-muted">Cargando...</p>`;
+
+  let programs;
+  try {
+    programs = await loadPrograms();
+  } catch (err) {
+    el.innerHTML = `<p class="live-muted">No se pudieron cargar los programas: ${describeError(err)}</p>`;
+    return;
+  }
+
   if (!programs.length) {
     el.innerHTML = `<p class="live-muted">Sin programas guardados.</p>`;
     return;
@@ -562,7 +578,7 @@ function renderProgramsList() {
   el.querySelectorAll(".btnRunProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (!state.device) return alert("Conecta la remadora primero (pestaña Remo en vivo).");
-      const program = programs.find((p) => p.id === btn.dataset.id);
+      const program = programs.find((p) => p.id === Number(btn.dataset.id));
       if (!program) return;
       goToTopScreen("live");
       startSession(program);
@@ -570,15 +586,19 @@ function renderProgramsList() {
   });
   el.querySelectorAll(".btnEditProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const program = programs.find((p) => p.id === btn.dataset.id);
+      const program = programs.find((p) => p.id === Number(btn.dataset.id));
       if (program) openProgramEditor(program);
     });
   });
   el.querySelectorAll(".btnDeleteProgram").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       if (!confirm("¿Borrar este programa?")) return;
-      savePrograms(programs.filter((p) => p.id !== btn.dataset.id));
-      renderProgramsList();
+      try {
+        await programsApi(`/api/programs/${btn.dataset.id}`, { method: "DELETE" });
+        renderProgramsList();
+      } catch (err) {
+        alert("No se pudo borrar: " + describeError(err));
+      }
     });
   });
 }
@@ -623,21 +643,23 @@ function addSegment() {
   renderSegmentsList();
 }
 
-function saveProgramFromEditor() {
+async function saveProgramFromEditor() {
   const name = $("liveProgramName").value.trim();
   if (!name) return alert("Ponle un nombre al programa.");
   if (!state.editorSegments.length) return alert("Agrega al menos un tramo.");
 
-  const programs = loadPrograms();
-  if (state.editingProgramId) {
-    const idx = programs.findIndex((p) => p.id === state.editingProgramId);
-    if (idx !== -1) programs[idx] = { ...programs[idx], name, segments: state.editorSegments };
-  } else {
-    programs.unshift({ id: `p_${Date.now()}`, name, segments: state.editorSegments, createdAt: new Date().toISOString() });
+  const body = { name, segments: state.editorSegments };
+  try {
+    if (state.editingProgramId) {
+      await programsApi(`/api/programs/${state.editingProgramId}`, { method: "PUT", body });
+    } else {
+      await programsApi("/api/programs", { method: "POST", body });
+    }
+    setLiveScreen("Programs");
+    renderProgramsList();
+  } catch (err) {
+    alert("No se pudo guardar el programa: " + describeError(err));
   }
-  savePrograms(programs);
-  renderProgramsList();
-  setLiveScreen("Programs");
 }
 
 // ---------- Eventos ----------

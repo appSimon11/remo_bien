@@ -383,6 +383,18 @@ async function initializeDatabase() {
     )
   `);
 
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS training_programs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      segments_json LONGTEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureUniqueIndex("training_programs", "idx_training_programs_user", "INDEX idx_training_programs_user (user_id)");
+
   await addColumnIfMissing("rowing_sessions", "user_id", "user_id INT NULL");
   await addColumnIfMissing("rowing_sessions", "calories", "calories DECIMAL(8, 2) NOT NULL DEFAULT 0");
   await addColumnIfMissing("rowing_sessions", "duration_minutes", "duration_minutes INT NOT NULL DEFAULT 0");
@@ -773,6 +785,95 @@ app.get("/api/live-sessions/:id/samples", requireDatabase, requireAuth, async (r
     ]);
     if (!row) return response.status(404).json({ message: "No encontré esa sesión." });
     response.json({ samples: row.raw_samples_json ? JSON.parse(row.raw_samples_json) : [] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function validateProgramPayload(body) {
+  const name = String(body.name || "").trim();
+  if (!name) return { error: "Ponle un nombre al programa." };
+  if (!Array.isArray(body.segments) || body.segments.length === 0) return { error: "Agrega al menos un tramo." };
+
+  const segments = [];
+  for (const seg of body.segments) {
+    const durationSec = Number.parseInt(seg.durationSec, 10);
+    const targetSpm = Number.parseInt(seg.targetSpm, 10);
+    if (!Number.isInteger(durationSec) || durationSec <= 0) return { error: "Duración de tramo inválida." };
+    if (!Number.isInteger(targetSpm) || targetSpm <= 0) return { error: "SPM de tramo inválido." };
+    segments.push({ durationSec, targetSpm });
+  }
+
+  return { row: { name: name.slice(0, 120), segments } };
+}
+
+function programRowToJson(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    segments: JSON.parse(row.segments_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+app.get("/api/programs", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const [rows] = await pool.execute(
+      "SELECT * FROM training_programs WHERE user_id = ? ORDER BY created_at DESC",
+      [request.user.id],
+    );
+    response.json(rows.map(programRowToJson));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/programs", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const result = validateProgramPayload(request.body);
+    if (result.error) return response.status(400).json({ message: result.error });
+    const [insert] = await pool.execute(
+      "INSERT INTO training_programs (user_id, name, segments_json) VALUES (?, ?, ?)",
+      [request.user.id, result.row.name, JSON.stringify(result.row.segments)],
+    );
+    const [[created]] = await pool.execute("SELECT * FROM training_programs WHERE id = ? AND user_id = ?", [
+      insert.insertId,
+      request.user.id,
+    ]);
+    response.status(201).json(programRowToJson(created));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/programs/:id", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const result = validateProgramPayload(request.body);
+    if (result.error) return response.status(400).json({ message: result.error });
+    const [update] = await pool.execute(
+      "UPDATE training_programs SET name = ?, segments_json = ? WHERE id = ? AND user_id = ?",
+      [result.row.name, JSON.stringify(result.row.segments), request.params.id, request.user.id],
+    );
+    if (update.affectedRows === 0) return response.status(404).json({ message: "No encontré ese programa." });
+    const [[updated]] = await pool.execute("SELECT * FROM training_programs WHERE id = ? AND user_id = ?", [
+      request.params.id,
+      request.user.id,
+    ]);
+    response.json(programRowToJson(updated));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/programs/:id", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const [deleted] = await pool.execute("DELETE FROM training_programs WHERE id = ? AND user_id = ?", [
+      request.params.id,
+      request.user.id,
+    ]);
+    if (deleted.affectedRows === 0) return response.status(404).json({ message: "No encontré ese programa." });
+    response.json({ ok: true });
   } catch (error) {
     next(error);
   }
