@@ -1407,10 +1407,19 @@ input:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 8px;
   font-size: 14px;
 }
 .goal-item-head strong { font-size: 15px; }
+.goal-item-head .live-item-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.goal-item-head .mini-button {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .goal-item.is-complete { border-color: var(--good); }
 .goal-track {
   height: 10px;
