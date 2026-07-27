@@ -921,6 +921,7 @@ const GOAL_METRICS = {
   distance_km: { label: "Kilómetros acumulados", column: "kilometers", unit: "km" },
   duration_min: { label: "Minutos acumulados", column: "duration_minutes", unit: "min" },
   calories: { label: "Calorías acumuladas", column: "calories", unit: "kcal" },
+  strokes: { label: "Paladas acumuladas", column: "strokes", unit: "paladas" },
   sessions_count: { label: "Sesiones completadas", column: null, unit: "sesiones" },
 };
 
@@ -1035,10 +1036,78 @@ async function computeRecords(userId) {
   return records;
 }
 
+async function computePeriodBests(userId) {
+  const [[week]] = await pool.execute(
+    `
+      SELECT YEARWEEK(session_date, 3) AS period, SUM(kilometers) AS total
+      FROM rowing_sessions WHERE user_id = ?
+      GROUP BY YEARWEEK(session_date, 3) ORDER BY total DESC LIMIT 1
+    `,
+    [userId],
+  );
+  const [[month]] = await pool.execute(
+    `
+      SELECT DATE_FORMAT(session_date, '%Y-%m') AS period, SUM(kilometers) AS total
+      FROM rowing_sessions WHERE user_id = ?
+      GROUP BY DATE_FORMAT(session_date, '%Y-%m') ORDER BY total DESC LIMIT 1
+    `,
+    [userId],
+  );
+  const [[yearFromSessions]] = await pool.execute(
+    `
+      SELECT YEAR(session_date) AS period, SUM(kilometers) AS total
+      FROM rowing_sessions WHERE user_id = ?
+      GROUP BY YEAR(session_date) ORDER BY total DESC LIMIT 1
+    `,
+    [userId],
+  );
+  const [[yearFromHistory]] = await pool.execute(
+    "SELECT year AS period, CAST(kilometers AS DOUBLE) AS total FROM historical_years WHERE user_id = ? ORDER BY kilometers DESC LIMIT 1",
+    [userId],
+  );
+
+  let bestYear = null;
+  if (yearFromSessions && Number(yearFromSessions.total) > 0) {
+    bestYear = { period: String(yearFromSessions.period), total: Number(yearFromSessions.total) };
+  }
+  if (yearFromHistory && (!bestYear || Number(yearFromHistory.total) > bestYear.total)) {
+    bestYear = { period: String(yearFromHistory.period), total: Number(yearFromHistory.total) };
+  }
+
+  return {
+    bestWeek: week && Number(week.total) > 0 ? { period: String(week.period), total: Number(week.total) } : null,
+    bestMonth: month && Number(month.total) > 0 ? { period: month.period, total: Number(month.total) } : null,
+    bestYear,
+  };
+}
+
+async function computeLifetimeKilometers(userId) {
+  const [[hist]] = await pool.execute("SELECT COALESCE(SUM(kilometers), 0) AS total FROM historical_years WHERE user_id = ?", [
+    userId,
+  ]);
+  const year = currentYear();
+  const [[baseline]] = await pool.execute(
+    "SELECT CAST(initial_kilometers AS DOUBLE) AS initialKilometers FROM current_year_baselines WHERE user_id = ? AND year = ?",
+    [userId, year],
+  );
+  const [[current]] = await pool.execute(
+    "SELECT COALESCE(SUM(kilometers), 0) AS total FROM rowing_sessions WHERE user_id = ? AND YEAR(session_date) = ?",
+    [userId, year],
+  );
+  return Number(hist.total || 0) + Number(baseline?.initialKilometers || 0) + Number(current.total || 0);
+}
+
 app.get("/api/records", requireDatabase, requireAuth, async (request, response, next) => {
   try {
     const records = await computeRecords(request.user.id);
-    response.json({ defs: RECORD_DEFS.map((d) => ({ key: d.key, label: d.label, unit: d.unit })), records });
+    const periodBests = await computePeriodBests(request.user.id);
+    const lifetimeKilometers = await computeLifetimeKilometers(request.user.id);
+    response.json({
+      defs: RECORD_DEFS.map((d) => ({ key: d.key, label: d.label, unit: d.unit })),
+      records,
+      periodBests,
+      lifetimeKilometers,
+    });
   } catch (error) {
     next(error);
   }

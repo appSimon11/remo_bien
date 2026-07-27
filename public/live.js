@@ -881,6 +881,7 @@ function formatGoalValue(goal) {
   if (goal.metric === "duration_min") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} min`;
   if (goal.metric === "sessions_count") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} sesiones`;
   if (goal.metric === "calories") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} kcal`;
+  if (goal.metric === "strokes") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} paladas`;
   return `${goal.currentValue.toFixed(1)} / ${goal.targetValue.toFixed(1)} km`;
 }
 
@@ -925,7 +926,8 @@ async function renderGoalsList() {
 }
 
 function formatRecordValue(def, value) {
-  if (def.unit === "/500m") return fmtPace(value);
+  // pace500m viene de la BD en MINUTOS por 500m (igual que en el resto de la app), no en segundos.
+  if (def.unit === "/500m") return fmtPace(value * 60);
   if (def.unit === "min") return fmtTime(value * 60);
   if (Number.isInteger(value)) return `${value} ${def.unit}`;
   return `${value.toFixed(1)} ${def.unit}`;
@@ -941,7 +943,7 @@ async function renderRecordsGrid() {
     el.innerHTML = `<p class="live-muted">No se pudieron cargar los récords: ${describeError(err)}</p>`;
     return;
   }
-  el.innerHTML = data.defs
+  const sessionTiles = data.defs
     .map((def) => {
       const record = data.records[def.key];
       if (!record) {
@@ -954,6 +956,32 @@ async function renderRecordsGrid() {
       </div>`;
     })
     .join("");
+
+  const pb = data.periodBests || {};
+  const weekLabel = (period) => {
+    const year = Math.floor(period / 100);
+    const week = period % 100;
+    return `Semana ${week}, ${year}`;
+  };
+  const monthLabel = (period) => {
+    const [y, m] = period.split("-");
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  };
+
+  const periodTiles = [
+    pb.bestWeek
+      ? `<div class="record-tile"><div class="record-value">${pb.bestWeek.total.toFixed(1)} km</div><div class="record-label">Mejor semana</div><div class="record-date">${weekLabel(Number(pb.bestWeek.period))}</div></div>`
+      : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor semana</div></div>`,
+    pb.bestMonth
+      ? `<div class="record-tile"><div class="record-value">${pb.bestMonth.total.toFixed(1)} km</div><div class="record-label">Mejor mes</div><div class="record-date">${monthLabel(pb.bestMonth.period)}</div></div>`
+      : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor mes</div></div>`,
+    pb.bestYear
+      ? `<div class="record-tile"><div class="record-value">${pb.bestYear.total.toFixed(1)} km</div><div class="record-label">Mejor año</div><div class="record-date">${pb.bestYear.period}</div></div>`
+      : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor año</div></div>`,
+  ].join("");
+
+  el.innerHTML = sessionTiles + periodTiles;
+  $("lifetimeKm").textContent = `${Number(data.lifetimeKilometers || 0).toFixed(1)} km`;
 }
 
 function showCelebrationIfAny(brokenRecords, goalsCompleted) {
