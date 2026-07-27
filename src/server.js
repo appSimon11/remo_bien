@@ -406,6 +406,9 @@ async function initializeDatabase() {
     )
   `);
   await ensureUniqueIndex("goals", "idx_goals_user", "INDEX idx_goals_user (user_id)");
+  // Ajuste manual (puede ser negativo) para cuando el total calculado no refleja la
+  // realidad, ej. paladas acumuladas de una remadora anterior que no deben contar.
+  await addColumnIfMissing("goals", "baseline_value", "baseline_value DECIMAL(12, 2) NOT NULL DEFAULT 0");
 
   await addColumnIfMissing("rowing_sessions", "user_id", "user_id INT NULL");
   await addColumnIfMissing("rowing_sessions", "calories", "calories DECIMAL(8, 2) NOT NULL DEFAULT 0");
@@ -763,7 +766,7 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
     const [goalsBefore] = await pool.execute("SELECT * FROM goals WHERE user_id = ?", [request.user.id]);
     const goalProgressBefore = {};
     for (const g of goalsBefore) {
-      goalProgressBefore[g.id] = await goalProgressValue(request.user.id, g.metric);
+      goalProgressBefore[g.id] = await goalProgressValue(request.user.id, g.metric, g.baseline_value);
     }
 
     const [insert] = await pool.execute(
@@ -803,7 +806,7 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
     for (const g of goalsBefore) {
       const before = goalProgressBefore[g.id];
       // eslint-disable-next-line no-await-in-loop
-      const after = await goalProgressValue(request.user.id, g.metric);
+      const after = await goalProgressValue(request.user.id, g.metric, g.baseline_value);
       if (before < Number(g.target_value) && after >= Number(g.target_value)) {
         goalsCompleted.push({ id: g.id, name: g.name, targetValue: Number(g.target_value) });
       }
@@ -935,7 +938,7 @@ function validateGoalPayload(body) {
   return { row: { name: name.slice(0, 120), metric, targetValue } };
 }
 
-async function goalProgressValue(userId, metric) {
+async function rawGoalValue(userId, metric) {
   const def = GOAL_METRICS[metric];
   if (metric === "sessions_count") {
     const [[row]] = await pool.execute("SELECT COUNT(*) AS total FROM rowing_sessions WHERE user_id = ?", [userId]);
@@ -948,12 +951,19 @@ async function goalProgressValue(userId, metric) {
   return Number(row.total || 0);
 }
 
+// Progreso real = valor calculado de tus sesiones + un ajuste manual (puede ser
+// negativo), para cuando el total de la BD no representa la realidad (ej. paladas
+// de una remadora anterior que no deben contar para la vida útil de la actual).
+async function goalProgressValue(userId, metric, baselineValue = 0) {
+  return Number(baselineValue || 0) + (await rawGoalValue(userId, metric));
+}
+
 app.get("/api/goals", requireDatabase, requireAuth, async (request, response, next) => {
   try {
     const [rows] = await pool.execute("SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC", [request.user.id]);
     const withProgress = await Promise.all(
       rows.map(async (row) => {
-        const current = await goalProgressValue(request.user.id, row.metric);
+        const current = await goalProgressValue(request.user.id, row.metric, row.baseline_value);
         return {
           id: row.id,
           name: row.name,
@@ -961,6 +971,7 @@ app.get("/api/goals", requireDatabase, requireAuth, async (request, response, ne
           metricLabel: GOAL_METRICS[row.metric]?.label || row.metric,
           unit: GOAL_METRICS[row.metric]?.unit || "",
           targetValue: Number(row.target_value),
+          baselineValue: Number(row.baseline_value || 0),
           currentValue: current,
           percent: Math.min(100, Math.round((current / Number(row.target_value)) * 100)),
           completed: current >= Number(row.target_value),
@@ -996,6 +1007,33 @@ app.delete("/api/goals/:id", requireDatabase, requireAuth, async (request, respo
     ]);
     if (deleted.affectedRows === 0) return response.status(404).json({ message: "No encontré esa meta." });
     response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Ajusta manualmente el avance mostrado (ej. cuando el total calculado incluye
+// datos que no le corresponden, como paladas de una remadora anterior).
+app.put("/api/goals/:id/adjust", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const desiredCurrent = Number(request.body.currentValue);
+    if (!Number.isFinite(desiredCurrent) || desiredCurrent < 0) {
+      return response.status(400).json({ message: "Captura un avance válido." });
+    }
+    const [[goal]] = await pool.execute("SELECT * FROM goals WHERE id = ? AND user_id = ?", [
+      request.params.id,
+      request.user.id,
+    ]);
+    if (!goal) return response.status(404).json({ message: "No encontré esa meta." });
+
+    const raw = await rawGoalValue(request.user.id, goal.metric);
+    const baselineValue = desiredCurrent - raw;
+    await pool.execute("UPDATE goals SET baseline_value = ? WHERE id = ? AND user_id = ?", [
+      baselineValue,
+      request.params.id,
+      request.user.id,
+    ]);
+    response.json({ ok: true, currentValue: baselineValue + raw });
   } catch (error) {
     next(error);
   }
@@ -1097,16 +1135,27 @@ async function computeLifetimeKilometers(userId) {
   return Number(hist.total || 0) + Number(baseline?.initialKilometers || 0) + Number(current.total || 0);
 }
 
+async function computeLifetimeCalories(userId) {
+  // No hay tabla de "histórico" para calorías (solo existe para kilómetros/minutos),
+  // así que esto suma nada más lo registrado por la app misma.
+  const [[row]] = await pool.execute("SELECT COALESCE(SUM(calories), 0) AS total FROM rowing_sessions WHERE user_id = ?", [
+    userId,
+  ]);
+  return Number(row.total || 0);
+}
+
 app.get("/api/records", requireDatabase, requireAuth, async (request, response, next) => {
   try {
     const records = await computeRecords(request.user.id);
     const periodBests = await computePeriodBests(request.user.id);
     const lifetimeKilometers = await computeLifetimeKilometers(request.user.id);
+    const lifetimeCalories = await computeLifetimeCalories(request.user.id);
     response.json({
       defs: RECORD_DEFS.map((d) => ({ key: d.key, label: d.label, unit: d.unit })),
       records,
       periodBests,
       lifetimeKilometers,
+      lifetimeCalories,
     });
   } catch (error) {
     next(error);

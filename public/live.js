@@ -905,13 +905,34 @@ async function renderGoalsList() {
       (g) => `<div class="goal-item ${g.completed ? "is-complete" : ""}">
         <div class="goal-item-head">
           <strong>${g.completed ? "🏆 " : ""}${g.name}</strong>
-          <button data-id="${g.id}" class="mini-button danger goal-delete">Borrar</button>
+          <div class="live-item-actions">
+            <button data-id="${g.id}" class="mini-button goal-adjust">Ajustar avance</button>
+            <button data-id="${g.id}" class="mini-button danger goal-delete">Borrar</button>
+          </div>
         </div>
         <div class="goal-track"><div class="goal-fill-bar" style="width:${g.percent}%"></div></div>
         <div class="goal-meta"><span>${formatGoalValue(g)}</span><span>${g.percent}%</span></div>
       </div>`,
     )
     .join("");
+  el.querySelectorAll(".goal-adjust").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const goal = goals.find((g) => g.id === Number(btn.dataset.id));
+      const input = prompt(
+        `¿Cuánto llevas en realidad de "${goal.name}"? (Útil si el total calculado incluye datos que no le corresponden, ej. otra remadora)`,
+        Math.round(goal.currentValue),
+      );
+      if (input == null) return;
+      const currentValue = Number(input);
+      if (!Number.isFinite(currentValue) || currentValue < 0) return alert("Captura un número válido.");
+      try {
+        await apiCall(`/api/goals/${btn.dataset.id}/adjust`, { method: "PUT", body: { currentValue } });
+        renderGoalsList();
+      } catch (err) {
+        alert("No se pudo ajustar: " + describeError(err));
+      }
+    });
+  });
   el.querySelectorAll(".goal-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("¿Borrar esta meta?")) return;
@@ -978,10 +999,11 @@ async function renderRecordsGrid() {
     pb.bestYear
       ? `<div class="record-tile"><div class="record-value">${pb.bestYear.total.toFixed(1)} km</div><div class="record-label">Mejor año</div><div class="record-date">${pb.bestYear.period}</div></div>`
       : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor año</div></div>`,
+    `<div class="record-tile"><div class="record-value">${Number(data.lifetimeKilometers || 0).toFixed(1)} km</div><div class="record-label">Km a la fecha</div></div>`,
+    `<div class="record-tile"><div class="record-value">${Math.round(Number(data.lifetimeCalories || 0))} kcal</div><div class="record-label">Calorías a la fecha</div></div>`,
   ].join("");
 
   el.innerHTML = sessionTiles + periodTiles;
-  $("lifetimeKm").textContent = `${Number(data.lifetimeKilometers || 0).toFixed(1)} km`;
 }
 
 function showCelebrationIfAny(brokenRecords, goalsCompleted) {
