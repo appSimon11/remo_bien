@@ -395,6 +395,18 @@ async function initializeDatabase() {
   `);
   await ensureUniqueIndex("training_programs", "idx_training_programs_user", "INDEX idx_training_programs_user (user_id)");
 
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS goals (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      name VARCHAR(120) NOT NULL,
+      metric VARCHAR(20) NOT NULL,
+      target_value DECIMAL(12, 2) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await ensureUniqueIndex("goals", "idx_goals_user", "INDEX idx_goals_user (user_id)");
+
   await addColumnIfMissing("rowing_sessions", "user_id", "user_id INT NULL");
   await addColumnIfMissing("rowing_sessions", "calories", "calories DECIMAL(8, 2) NOT NULL DEFAULT 0");
   await addColumnIfMissing("rowing_sessions", "duration_minutes", "duration_minutes INT NOT NULL DEFAULT 0");
@@ -745,6 +757,15 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
     const result = validateLiveSessionPayload(request.body);
     if (result.error) return response.status(400).json({ message: result.error });
     const row = result.row;
+
+    // Récords y metas "antes" de esta sesión, para saber qué se rompió/cumplió con ella.
+    const recordsBefore = await computeRecords(request.user.id);
+    const [goalsBefore] = await pool.execute("SELECT * FROM goals WHERE user_id = ?", [request.user.id]);
+    const goalProgressBefore = {};
+    for (const g of goalsBefore) {
+      goalProgressBefore[g.id] = await goalProgressValue(request.user.id, g.metric);
+    }
+
     const [insert] = await pool.execute(
       `
         INSERT INTO rowing_sessions
@@ -771,7 +792,24 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
       ],
     );
     const [[created]] = await pool.execute(`${sessionSelectSql("WHERE id = ? AND user_id = ?")}`, [insert.insertId, request.user.id]);
-    response.status(201).json(created);
+
+    const recordsAfter = await computeRecords(request.user.id);
+    const brokenRecords = RECORD_DEFS
+      .filter((def) => recordsAfter[def.key] && recordsAfter[def.key].sessionId === created.id)
+      .filter((def) => !recordsBefore[def.key] || recordsBefore[def.key].sessionId !== recordsAfter[def.key].sessionId)
+      .map((def) => ({ key: def.key, label: def.label, unit: def.unit, value: recordsAfter[def.key].value }));
+
+    const goalsCompleted = [];
+    for (const g of goalsBefore) {
+      const before = goalProgressBefore[g.id];
+      // eslint-disable-next-line no-await-in-loop
+      const after = await goalProgressValue(request.user.id, g.metric);
+      if (before < Number(g.target_value) && after >= Number(g.target_value)) {
+        goalsCompleted.push({ id: g.id, name: g.name, targetValue: Number(g.target_value) });
+      }
+    }
+
+    response.status(201).json({ ...created, brokenRecords, goalsCompleted });
   } catch (error) {
     next(error);
   }
@@ -874,6 +912,133 @@ app.delete("/api/programs/:id", requireDatabase, requireAuth, async (request, re
     ]);
     if (deleted.affectedRows === 0) return response.status(404).json({ message: "No encontré ese programa." });
     response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const GOAL_METRICS = {
+  distance_km: { label: "Kilómetros acumulados", column: "kilometers", unit: "km" },
+  duration_min: { label: "Minutos acumulados", column: "duration_minutes", unit: "min" },
+  calories: { label: "Calorías acumuladas", column: "calories", unit: "kcal" },
+  sessions_count: { label: "Sesiones completadas", column: null, unit: "sesiones" },
+};
+
+function validateGoalPayload(body) {
+  const name = String(body.name || "").trim();
+  const metric = String(body.metric || "");
+  const targetValue = Number(body.targetValue);
+  if (!name) return { error: "Ponle un nombre a la meta." };
+  if (!GOAL_METRICS[metric]) return { error: "Tipo de meta inválido." };
+  if (!Number.isFinite(targetValue) || targetValue <= 0) return { error: "La meta debe ser mayor a cero." };
+  return { row: { name: name.slice(0, 120), metric, targetValue } };
+}
+
+async function goalProgressValue(userId, metric) {
+  const def = GOAL_METRICS[metric];
+  if (metric === "sessions_count") {
+    const [[row]] = await pool.execute("SELECT COUNT(*) AS total FROM rowing_sessions WHERE user_id = ?", [userId]);
+    return Number(row.total || 0);
+  }
+  const [[row]] = await pool.execute(
+    `SELECT COALESCE(SUM(${def.column}), 0) AS total FROM rowing_sessions WHERE user_id = ?`,
+    [userId],
+  );
+  return Number(row.total || 0);
+}
+
+app.get("/api/goals", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const [rows] = await pool.execute("SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC", [request.user.id]);
+    const withProgress = await Promise.all(
+      rows.map(async (row) => {
+        const current = await goalProgressValue(request.user.id, row.metric);
+        return {
+          id: row.id,
+          name: row.name,
+          metric: row.metric,
+          metricLabel: GOAL_METRICS[row.metric]?.label || row.metric,
+          unit: GOAL_METRICS[row.metric]?.unit || "",
+          targetValue: Number(row.target_value),
+          currentValue: current,
+          percent: Math.min(100, Math.round((current / Number(row.target_value)) * 100)),
+          completed: current >= Number(row.target_value),
+          createdAt: row.created_at,
+        };
+      }),
+    );
+    response.json(withProgress);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/goals", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const result = validateGoalPayload(request.body);
+    if (result.error) return response.status(400).json({ message: result.error });
+    const [insert] = await pool.execute(
+      "INSERT INTO goals (user_id, name, metric, target_value) VALUES (?, ?, ?, ?)",
+      [request.user.id, result.row.name, result.row.metric, result.row.targetValue],
+    );
+    response.status(201).json({ id: insert.insertId, ...result.row });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/goals/:id", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const [deleted] = await pool.execute("DELETE FROM goals WHERE id = ? AND user_id = ?", [
+      request.params.id,
+      request.user.id,
+    ]);
+    if (deleted.affectedRows === 0) return response.status(404).json({ message: "No encontré esa meta." });
+    response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const RECORD_DEFS = [
+  { key: "distanceKm", label: "Mayor distancia", unit: "km", better: "max", value: (r) => Number(r.kilometers) },
+  { key: "durationMin", label: "Sesión más larga", unit: "min", better: "max", value: (r) => Number(r.durationMinutes) },
+  { key: "bestPace", label: "Mejor ritmo /500m", unit: "/500m", better: "min", value: (r) => Number(r.pace500m), filter: (r) => Number(r.kilometers) > 0 },
+  { key: "bestSpm", label: "Mayor SPM promedio", unit: "spm", better: "max", value: (r) => Number(r.strokesPerMinute) },
+  { key: "bestPower", label: "Mayor potencia promedio", unit: "W", better: "max", value: (r) => Number(r.avgPowerW), filter: (r) => r.avgPowerW != null },
+  { key: "mostCalories", label: "Más calorías quemadas", unit: "kcal", better: "max", value: (r) => Number(r.calories) },
+];
+
+async function computeRecords(userId) {
+  const [rows] = await pool.execute(sessionSelectSql("WHERE user_id = ?"), [userId]);
+  const records = {};
+  for (const def of RECORD_DEFS) {
+    const candidates = rows.filter((r) => (def.filter ? def.filter(r) : true));
+    if (!candidates.length) {
+      records[def.key] = null;
+      continue;
+    }
+    const best = candidates.reduce((acc, r) => {
+      const v = def.value(r);
+      if (!acc) return r;
+      const accV = def.value(acc);
+      return def.better === "min" ? (v < accV ? r : acc) : v > accV ? r : acc;
+    }, null);
+    records[def.key] = {
+      label: def.label,
+      unit: def.unit,
+      value: def.value(best),
+      sessionId: best.id,
+      sessionDate: best.sessionDate,
+    };
+  }
+  return records;
+}
+
+app.get("/api/records", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const records = await computeRecords(request.user.id);
+    response.json({ defs: RECORD_DEFS.map((d) => ({ key: d.key, label: d.label, unit: d.unit })), records });
   } catch (error) {
     next(error);
   }

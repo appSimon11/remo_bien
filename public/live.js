@@ -19,8 +19,10 @@ const state = {
   metroBpm: 22,
   metroEnabled: true,
   metroRunning: false,
+  nextBeepTime: 0,
   sessionStart: null,
   sessionTimer: null,
+  keepAliveTimer: null,
   samples: [],
   latest: { distance: 0, pace: null, spm: 0, power: 0, cal: 0, hr: null, strokes: 0, elapsed: 0 },
   editorSegments: [],
@@ -202,47 +204,70 @@ async function connectHR() {
 }
 
 // ---------- Metrónomo + barra visual ----------
+// Metrónomo con "lookahead scheduler" (patrón estándar de Web Audio para tempo preciso):
+// en vez de un setInterval que va acumulando desfase con cada beep durante una sesión larga,
+// programamos los beeps por adelantado usando el reloj interno del AudioContext, que no se
+// desincroniza aunque el hilo principal de JS se retrase un poco.
+const METRO_SCHEDULE_AHEAD_SEC = 0.15;
+const METRO_SCHEDULER_INTERVAL_MS = 30;
+
 function ensureAudioCtx() {
   if (!state.metroAudioCtx) state.metroAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return state.metroAudioCtx;
 }
-function beep() {
-  const ctx = ensureAudioCtx();
+
+function scheduleBeepAt(time) {
+  const ctx = state.metroAudioCtx;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = "sine";
   osc.frequency.value = 880;
-  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.5, ctx.currentTime + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.exponentialRampToValueAtTime(0.5, time + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
   osc.connect(gain);
   gain.connect(ctx.destination);
-  osc.start();
-  osc.stop(ctx.currentTime + 0.13);
+  osc.start(time);
+  osc.stop(time + 0.13);
 }
-function startStrokeBar(bpm) {
+
+function pulseStrokeBar(periodSec) {
   const el = $("liveStrokeFill");
   if (!el) return;
-  el.style.animationDuration = `${60 / bpm}s`;
+  el.style.animationDuration = `${periodSec}s`;
   el.classList.remove("animate");
-  void el.offsetWidth;
+  void el.offsetWidth; // fuerza reflow para reiniciar la animación desde 0
   el.classList.add("animate");
 }
+
+function metroSchedulerTick() {
+  const ctx = state.metroAudioCtx;
+  const periodSec = 60 / state.metroBpm;
+  while (state.nextBeepTime < ctx.currentTime + METRO_SCHEDULE_AHEAD_SEC) {
+    scheduleBeepAt(state.nextBeepTime);
+    const msUntilBeep = Math.max(0, (state.nextBeepTime - ctx.currentTime) * 1000);
+    setTimeout(() => pulseStrokeBar(periodSec), msUntilBeep);
+    state.nextBeepTime += periodSec;
+  }
+}
+
+function startMetronome(bpm) {
+  stopMetronome();
+  state.metroBpm = bpm;
+  const ctx = ensureAudioCtx();
+  state.nextBeepTime = ctx.currentTime + 0.05;
+  metroSchedulerTick();
+  state.metroTimer = setInterval(metroSchedulerTick, METRO_SCHEDULER_INTERVAL_MS);
+  state.metroRunning = true;
+}
+
 function stopStrokeBar() {
   const el = $("liveStrokeFill");
   if (!el) return;
   el.classList.remove("animate");
   el.style.width = "0%";
 }
-function startMetronome(bpm) {
-  stopMetronome();
-  state.metroBpm = bpm;
-  ensureAudioCtx();
-  beep();
-  state.metroTimer = setInterval(beep, 60000 / bpm);
-  state.metroRunning = true;
-  startStrokeBar(bpm);
-}
+
 function stopMetronome() {
   if (state.metroTimer) clearInterval(state.metroTimer);
   state.metroTimer = null;
@@ -295,16 +320,24 @@ function startSession(program) {
 
   setLiveScreen("Workout");
   updateDashboard();
+  document.querySelector(".app-frame").classList.add("nav-compact");
 
   if (program) updateProgramProgress();
   else if (state.metroEnabled) startMetronome(state.metroBpm);
 
   state.sessionTimer = setInterval(tick, 1000);
+  // Mantiene la conexión a MySQL "despierta" durante la remada para que al terminar
+  // el guardado sea instantáneo en vez de esperar a que la base de datos reaccione.
+  pingDatabase();
+  state.keepAliveTimer = setInterval(pingDatabase, 4 * 60 * 1000);
 }
 
 function tick() {
   updateDashboard();
-  if (state.activeProgram) updateProgramProgress();
+  if (state.activeProgram) {
+    updateProgramProgress();
+    updateProgramChartLive(state.programSegmentIndex, state.latest.spm);
+  }
 }
 
 function programTotalDuration(program) {
@@ -341,20 +374,36 @@ function zoneColor(t) {
   return stops[stops.length - 1][1];
 }
 
+function spmToHeightPct(spm, minSpm, maxSpm) {
+  const t = maxSpm > minSpm ? (spm - minSpm) / (maxSpm - minSpm) : 0.5;
+  return Math.round(30 + Math.max(0, Math.min(1, t)) * 70);
+}
+
+// Igual que spmToHeightPct pero sin recortar a 0-100%: así el ritmo real puede
+// "salirse" del rango del programa (arriba o abajo) y se nota en la gráfica.
+function spmToHeightPctUnclamped(spm, minSpm, maxSpm) {
+  const t = maxSpm > minSpm ? (spm - minSpm) / (maxSpm - minSpm) : 0.5;
+  const pct = 30 + t * 70;
+  return Math.max(0, Math.min(160, pct));
+}
+
 function buildProgramChart(program) {
   const el = $("liveProgramChart");
   const spms = program.segments.map((s) => s.targetSpm);
-  const minSpm = Math.min(...spms);
-  const maxSpm = Math.max(...spms);
+  state.chartMinSpm = Math.min(...spms);
+  state.chartMaxSpm = Math.max(...spms);
 
   el.innerHTML = program.segments
     .map((seg, i) => {
-      const t = maxSpm > minSpm ? (seg.targetSpm - minSpm) / (maxSpm - minSpm) : 0.5;
-      const heightPct = Math.round(30 + t * 70);
+      const t = state.chartMaxSpm > state.chartMinSpm ? (seg.targetSpm - state.chartMinSpm) / (state.chartMaxSpm - state.chartMinSpm) : 0.5;
+      const heightPct = spmToHeightPct(seg.targetSpm, state.chartMinSpm, state.chartMaxSpm);
       const [r, g, b] = zoneColor(t);
       return `<div class="chart-bar-item" data-index="${i}" style="flex-grow:${seg.durationSec}">
         <span class="chart-bar-label">${seg.targetSpm}</span>
-        <div class="chart-bar" style="height:${heightPct}%; background: linear-gradient(180deg, rgba(${r},${g},${b},1), rgba(${r},${g},${b},0.55));"></div>
+        <div class="chart-bar-stack">
+          <div class="chart-bar" style="height:${heightPct}%; background: linear-gradient(180deg, rgba(${r},${g},${b},1), rgba(${r},${g},${b},0.55));"></div>
+          <div class="chart-bar-actual" data-target-height="${heightPct}"></div>
+        </div>
       </div>`;
     })
     .join("");
@@ -366,7 +415,24 @@ function updateProgramChartActive(index) {
     const i = Number(item.dataset.index);
     item.classList.toggle("is-active", i === index);
     item.classList.toggle("is-done", i < index);
+    if (i !== index) {
+      const actual = item.querySelector(".chart-bar-actual");
+      if (actual) actual.style.height = "0%";
+    }
   });
+}
+
+// Dibuja el SPM real encima de la barra objetivo del tramo activo: si vas más lento,
+// deja un hueco apagado arriba; si vas más rápido, se sale por encima del tope.
+function updateProgramChartLive(index, currentSpm) {
+  const el = $("liveProgramChart");
+  const item = el.querySelector(`.chart-bar-item[data-index="${index}"]`);
+  if (!item || !currentSpm) return;
+  const actual = item.querySelector(".chart-bar-actual");
+  if (!actual) return;
+  const heightPct = spmToHeightPctUnclamped(currentSpm, state.chartMinSpm, state.chartMaxSpm);
+  actual.style.height = `${heightPct}%`;
+  actual.classList.toggle("is-over", heightPct > 100);
 }
 
 function updateProgramProgress() {
@@ -394,21 +460,106 @@ function updateProgramProgress() {
   $("liveProgramSegmentTime").textContent = `${fmtTime(info.segRemaining)} restantes`;
   const next = program.segments[info.index + 1];
   $("liveProgramNextLabel").textContent = next ? `Siguiente: ${next.targetSpm} SPM (${fmtTime(next.durationSec)})` : "Último tramo";
+
+  updateTotalProgress(program, elapsed);
+}
+
+// Barra de avance de todo el entrenamiento, como la de una película: "llevas X / faltan Y".
+function updateTotalProgress(program, elapsed) {
+  const total = programTotalDuration(program);
+  const clampedElapsed = Math.min(elapsed, total);
+  const remaining = Math.max(0, total - clampedElapsed);
+  const percent = total > 0 ? (clampedElapsed / total) * 100 : 0;
+
+  $("liveTotalFill").style.width = `${percent}%`;
+  $("liveTotalElapsed").textContent = fmtTime(clampedElapsed);
+  $("liveTotalRemaining").textContent = `-${fmtTime(remaining)}`;
 }
 
 async function stopSession() {
   clearInterval(state.sessionTimer);
+  clearInterval(state.keepAliveTimer);
   stopMetronome();
+  document.querySelector(".app-frame").classList.remove("nav-compact");
 
   const summary = buildSummary();
   renderSummary(summary);
   setLiveScreen("Summary");
 
+  saveSessionWithRetry(summary);
+}
+
+// ---------- Guardado con reintentos (la conexión a MySQL se "enfría" tras inactividad) ----------
+async function isDatabaseReady() {
   try {
-    await saveSessionToServer(summary);
-  } catch (err) {
-    console.error(err);
-    alert("La sesión no se pudo guardar en tu historial: " + describeError(err) + "\nRevisa tu conexión e inténtalo de nuevo desde Historial si hace falta.");
+    const res = await fetch("/api/health");
+    const data = await res.json();
+    return !!data.databaseReady;
+  } catch {
+    return false;
+  }
+}
+
+function pingDatabase() {
+  fetch("/api/auth/me").catch(() => {});
+}
+
+async function waitForDatabaseReady(onProgress, maxAttempts = 20, delayMs = 2000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    pingDatabase();
+    // eslint-disable-next-line no-await-in-loop
+    if (await isDatabaseReady()) return true;
+    if (onProgress) onProgress(attempt, maxAttempts);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+}
+
+function setSaveStatus(kind, text, retrySummary) {
+  const el = $("liveSaveStatus");
+  if (!el) return;
+  el.className = `live-save-status live-save-${kind}`;
+  el.innerHTML = text;
+  if (kind === "error" && retrySummary) {
+    const btn = document.createElement("button");
+    btn.className = "mini-button";
+    btn.textContent = "Reintentar";
+    btn.addEventListener("click", () => saveSessionWithRetry(retrySummary));
+    el.appendChild(document.createTextNode(" "));
+    el.appendChild(btn);
+  }
+}
+
+async function saveSessionWithRetry(summary) {
+  setSaveStatus("saving", "Guardando sesión...");
+
+  const ready = await waitForDatabaseReady((attempt, max) => {
+    setSaveStatus("saving", `Despertando la base de datos... (intento ${attempt}/${max})`);
+  });
+
+  if (!ready) {
+    setSaveStatus("error", "La base de datos no respondió a tiempo.", summary);
+    return;
+  }
+
+  const maxSaveAttempts = 3;
+  for (let attempt = 1; attempt <= maxSaveAttempts; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const saved = await saveSessionToServer(summary);
+      setSaveStatus("success", "Sesión guardada en tu historial ✓");
+      showCelebrationIfAny(saved.brokenRecords, saved.goalsCompleted);
+      return;
+    } catch (err) {
+      if (attempt === maxSaveAttempts) {
+        console.error(err);
+        setSaveStatus("error", "No se pudo guardar: " + describeError(err), summary);
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
   }
 }
 
@@ -713,6 +864,135 @@ async function saveProgramFromEditor() {
     alert("No se pudo guardar el programa: " + describeError(err));
   }
 }
+
+// ---------- Metas y Récords ----------
+async function apiCall(url, options = {}) {
+  const response = await fetch(url, {
+    method: options.method || "GET",
+    headers: options.body ? { "Content-Type": "application/json" } : {},
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Error del servidor");
+  return data;
+}
+
+function formatGoalValue(goal) {
+  if (goal.metric === "duration_min") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} min`;
+  if (goal.metric === "sessions_count") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} sesiones`;
+  if (goal.metric === "calories") return `${Math.round(goal.currentValue)} / ${Math.round(goal.targetValue)} kcal`;
+  return `${goal.currentValue.toFixed(1)} / ${goal.targetValue.toFixed(1)} km`;
+}
+
+async function renderGoalsList() {
+  const el = $("goalsList");
+  el.innerHTML = `<p class="live-muted">Cargando...</p>`;
+  let goals;
+  try {
+    goals = await apiCall("/api/goals");
+  } catch (err) {
+    el.innerHTML = `<p class="live-muted">No se pudieron cargar las metas: ${describeError(err)}</p>`;
+    return;
+  }
+  $("goalsCount").textContent = goals.length;
+  if (!goals.length) {
+    el.innerHTML = `<p class="live-muted">Sin metas todavía.</p>`;
+    return;
+  }
+  el.innerHTML = goals
+    .map(
+      (g) => `<div class="goal-item ${g.completed ? "is-complete" : ""}">
+        <div class="goal-item-head">
+          <strong>${g.completed ? "🏆 " : ""}${g.name}</strong>
+          <button data-id="${g.id}" class="mini-button danger goal-delete">Borrar</button>
+        </div>
+        <div class="goal-track"><div class="goal-fill-bar" style="width:${g.percent}%"></div></div>
+        <div class="goal-meta"><span>${formatGoalValue(g)}</span><span>${g.percent}%</span></div>
+      </div>`,
+    )
+    .join("");
+  el.querySelectorAll(".goal-delete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("¿Borrar esta meta?")) return;
+      try {
+        await apiCall(`/api/goals/${btn.dataset.id}`, { method: "DELETE" });
+        renderGoalsList();
+      } catch (err) {
+        alert("No se pudo borrar: " + describeError(err));
+      }
+    });
+  });
+}
+
+function formatRecordValue(def, value) {
+  if (def.unit === "/500m") return fmtPace(value);
+  if (def.unit === "min") return fmtTime(value * 60);
+  if (Number.isInteger(value)) return `${value} ${def.unit}`;
+  return `${value.toFixed(1)} ${def.unit}`;
+}
+
+async function renderRecordsGrid() {
+  const el = $("recordsGrid");
+  el.innerHTML = `<p class="live-muted">Cargando...</p>`;
+  let data;
+  try {
+    data = await apiCall("/api/records");
+  } catch (err) {
+    el.innerHTML = `<p class="live-muted">No se pudieron cargar los récords: ${describeError(err)}</p>`;
+    return;
+  }
+  el.innerHTML = data.defs
+    .map((def) => {
+      const record = data.records[def.key];
+      if (!record) {
+        return `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">${def.label}</div></div>`;
+      }
+      return `<div class="record-tile">
+        <div class="record-value">${formatRecordValue(def, record.value)}</div>
+        <div class="record-label">${def.label}</div>
+        <div class="record-date">${record.sessionDate}</div>
+      </div>`;
+    })
+    .join("");
+}
+
+function showCelebrationIfAny(brokenRecords, goalsCompleted) {
+  const items = [
+    ...(brokenRecords || []).map((r) => `🏅 Nuevo récord — ${r.label}: ${formatRecordValue(r, r.value)}`),
+    ...(goalsCompleted || []).map((g) => `🎯 ¡Meta cumplida! ${g.name}`),
+  ];
+  if (!items.length) return;
+  $("celebrateList").innerHTML = items.map((t) => `<div class="celebrate-item">${t}</div>`).join("");
+  $("celebrateOverlay").classList.remove("is-hidden");
+}
+
+function hideCelebration() {
+  $("celebrateOverlay").classList.add("is-hidden");
+}
+
+$("celebrateClose").addEventListener("click", hideCelebration);
+
+$("goalForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("goalName").value.trim();
+  const metric = $("goalMetric").value;
+  const targetValue = Number($("goalTarget").value);
+  if (!name) return;
+  try {
+    await apiCall("/api/goals", { method: "POST", body: { name, metric, targetValue } });
+    $("goalName").value = "";
+    $("goalTarget").value = "";
+    $("goalMessage").textContent = "";
+    renderGoalsList();
+  } catch (err) {
+    $("goalMessage").textContent = describeError(err);
+  }
+});
+
+document.querySelector('.nav-button[data-screen="goals"]').addEventListener("click", () => {
+  renderGoalsList();
+  renderRecordsGrid();
+});
 
 // ---------- Eventos ----------
 if (!navigator.bluetooth) {

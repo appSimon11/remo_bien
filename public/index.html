@@ -79,7 +79,7 @@
       </header>
 
       <section class="app-frame">
-        <aside>
+        <aside id="appSidebar">
           <div class="nav-title" id="userLabel">Usuario</div>
           <button class="nav-button is-active" data-screen="session" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -92,6 +92,10 @@
           <button class="nav-button" data-screen="programs" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
             Programas
+          </button>
+          <button class="nav-button" data-screen="goals" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v8M12 22a9 9 0 100-18 9 9 0 000 18zM12 16a3 3 0 100-6 3 3 0 000 6z"/></svg>
+            Metas y Récords
           </button>
           <button class="nav-button" data-screen="history" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
@@ -223,6 +227,13 @@
                   <span id="liveProgramSegmentTime">00:00</span>
                 </div>
                 <div id="liveProgramChart" class="live-program-chart"></div>
+                <div class="live-total-progress">
+                  <div class="live-total-track"><div id="liveTotalFill" class="live-total-fill"></div></div>
+                  <div class="live-total-labels">
+                    <span id="liveTotalElapsed">00:00</span>
+                    <span id="liveTotalRemaining">-00:00</span>
+                  </div>
+                </div>
                 <p id="liveProgramNextLabel" class="live-muted"></p>
               </div>
 
@@ -259,7 +270,9 @@
 
             <!-- Live: resumen -->
             <div id="liveScreenSummary" class="live-screen">
+              <h2 class="live-summary-title">¡Sesión terminada!</h2>
               <div id="liveSummaryBox" class="panel live-summary-box"></div>
+              <div id="liveSaveStatus" class="live-save-status"></div>
               <button id="liveBtnShare" class="save-button" type="button">Compartir (Fotos / Notas...)</button>
               <button id="liveBtnBackHome" class="secondary-button" type="button">Volver</button>
             </div>
@@ -298,6 +311,52 @@
               <p id="liveProgramTotal" class="live-muted"></p>
               <button id="liveBtnSaveProgram" class="save-button" type="button">Guardar programa</button>
               <button id="liveBtnCancelProgram" class="secondary-button" type="button">Cancelar</button>
+            </div>
+          </section>
+
+          <section class="screen" data-view="goals">
+            <div class="screen-header">
+              <div>
+                <h2>Metas y Récords</h2>
+                <p>Las metas las programas tú; los récords se calculan solos con tu historial.</p>
+              </div>
+            </div>
+
+            <div class="entry-grid">
+              <form class="panel form-card" id="goalForm">
+                <h3>Nueva meta</h3>
+                <div class="field">
+                  <label for="goalName">Nombre</label>
+                  <input id="goalName" type="text" placeholder="Ej. 3000 km este año" required />
+                </div>
+                <div class="field-grid">
+                  <div class="field">
+                    <label for="goalMetric">Tipo</label>
+                    <select id="goalMetric">
+                      <option value="distance_km">Kilómetros acumulados</option>
+                      <option value="duration_min">Minutos acumulados</option>
+                      <option value="calories">Calorías acumuladas</option>
+                      <option value="sessions_count">Número de sesiones</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="goalTarget">Meta</label>
+                    <input id="goalTarget" type="number" inputmode="decimal" step="0.01" min="0" required />
+                  </div>
+                </div>
+                <button class="save-button" type="submit">Guardar meta</button>
+                <p class="form-message" id="goalMessage" role="status"></p>
+              </form>
+
+              <div class="panel goals-list-card">
+                <div class="chart-title"><span>Tus metas</span><strong id="goalsCount">0</strong></div>
+                <div id="goalsList" class="goals-list"></div>
+              </div>
+            </div>
+
+            <div class="panel records-card">
+              <div class="chart-title"><span>Récords personales</span></div>
+              <div id="recordsGrid" class="records-grid"></div>
             </div>
           </section>
 
@@ -465,6 +524,15 @@
     </div>
 
     <div class="year-map-tooltip is-hidden" id="yearMapTooltip"></div>
+
+    <div class="celebrate-overlay is-hidden" id="celebrateOverlay">
+      <div class="celebrate-card">
+        <div class="celebrate-emoji">🎉</div>
+        <h2 id="celebrateTitle">¡Felicidades!</h2>
+        <div id="celebrateList" class="celebrate-list"></div>
+        <button class="save-button" id="celebrateClose" type="button">¡Vamos por más!</button>
+      </div>
+    </div>
 
     <script src="/live.js?v=1" type="module"></script>
     <script src="/app.js?v=remo2-mysql-v8" type="module"></script>
