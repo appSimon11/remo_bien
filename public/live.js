@@ -996,9 +996,6 @@ async function renderRecordsGrid() {
     pb.bestMonth
       ? `<div class="record-tile"><div class="record-value">${pb.bestMonth.total.toFixed(1)} km</div><div class="record-label">Mejor mes</div><div class="record-date">${monthLabel(pb.bestMonth.period)}</div></div>`
       : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor mes</div></div>`,
-    pb.bestYear
-      ? `<div class="record-tile"><div class="record-value">${pb.bestYear.total.toFixed(1)} km</div><div class="record-label">Mejor año</div><div class="record-date">${pb.bestYear.period}</div></div>`
-      : `<div class="record-tile is-empty"><div class="record-value">--</div><div class="record-label">Mejor año</div></div>`,
     `<div class="record-tile"><div class="record-value">${Number(data.lifetimeKilometers || 0).toFixed(1)} km</div><div class="record-label">Km a la fecha</div></div>`,
     `<div class="record-tile"><div class="record-value">${Math.round(Number(data.lifetimeCalories || 0))} kcal</div><div class="record-label">Calorías a la fecha</div></div>`,
   ].join("");
