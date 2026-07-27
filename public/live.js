@@ -289,6 +289,7 @@ function startSession(program) {
   state.programSegmentIndex = -1;
 
   $("liveProgramBanner").style.display = program ? "block" : "none";
+  if (program) buildProgramChart(program);
   $("liveMetroLive").textContent = `${state.metroBpm} SPM`;
   $("liveBtnMetroToggle").textContent = "Pausar";
 
@@ -318,6 +319,56 @@ function segmentAtElapsed(program, elapsedSec) {
   }
   return null;
 }
+// Escala de color por intensidad relativa dentro del propio programa (azul=suave -> rojo=al tope)
+function zoneColor(t) {
+  const stops = [
+    [0.0, [59, 130, 246]],
+    [0.25, [34, 197, 94]],
+    [0.5, [217, 180, 40]],
+    [0.75, [234, 122, 30]],
+    [1.0, [220, 60, 50]],
+  ];
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, c0] = stops[i];
+    const [t1, c1] = stops[i + 1];
+    if (t >= t0 && t <= t1) {
+      const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+      const mix = c0.map((v, idx) => Math.round(v + (c1[idx] - v) * f));
+      return mix;
+    }
+  }
+  return stops[stops.length - 1][1];
+}
+
+function buildProgramChart(program) {
+  const el = $("liveProgramChart");
+  const spms = program.segments.map((s) => s.targetSpm);
+  const minSpm = Math.min(...spms);
+  const maxSpm = Math.max(...spms);
+
+  el.innerHTML = program.segments
+    .map((seg, i) => {
+      const t = maxSpm > minSpm ? (seg.targetSpm - minSpm) / (maxSpm - minSpm) : 0.5;
+      const heightPct = Math.round(30 + t * 70);
+      const [r, g, b] = zoneColor(t);
+      return `<div class="chart-bar-item" data-index="${i}" style="flex-grow:${seg.durationSec}">
+        <span class="chart-bar-label">${seg.targetSpm}</span>
+        <div class="chart-bar" style="height:${heightPct}%; background: linear-gradient(180deg, rgba(${r},${g},${b},1), rgba(${r},${g},${b},0.55));"></div>
+      </div>`;
+    })
+    .join("");
+}
+
+function updateProgramChartActive(index) {
+  const el = $("liveProgramChart");
+  el.querySelectorAll(".chart-bar-item").forEach((item) => {
+    const i = Number(item.dataset.index);
+    item.classList.toggle("is-active", i === index);
+    item.classList.toggle("is-done", i < index);
+  });
+}
+
 function updateProgramProgress() {
   const program = state.activeProgram;
   const elapsed = Math.floor((Date.now() - state.sessionStart) / 1000);
@@ -336,6 +387,7 @@ function updateProgramProgress() {
     state.metroBpm = info.seg.targetSpm;
     $("liveMetroLive").textContent = `${state.metroBpm} SPM`;
     if (state.metroEnabled) startMetronome(info.seg.targetSpm);
+    updateProgramChartActive(info.index);
   }
 
   $("liveProgramSegmentLabel").textContent = `Tramo ${info.index + 1}/${program.segments.length} · ${info.seg.targetSpm} SPM`;
