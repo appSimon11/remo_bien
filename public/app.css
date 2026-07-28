@@ -896,8 +896,13 @@ input:focus {
 }
 
 .sessions-row {
-  grid-template-columns: 0.9fr 0.8fr 0.85fr 0.75fr 0.75fr 0.75fr minmax(128px, auto);
+  grid-template-columns: 0.9fr 0.8fr 0.85fr 0.75fr 0.75fr 0.75fr 210px;
   min-width: 760px;
+}
+.sessions-row .row-actions .mini-button {
+  padding: 0 8px;
+  font-size: 12px;
+  min-height: 30px;
 }
 
 .sessions-row.compact-row {
