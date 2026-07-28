@@ -336,7 +336,6 @@ function tick() {
   updateDashboard();
   if (state.activeProgram) {
     updateProgramProgress();
-    updateProgramChartLive(state.programSegmentIndex, state.latest.spm);
   }
 }
 
@@ -379,14 +378,6 @@ function spmToHeightPct(spm, minSpm, maxSpm) {
   return Math.round(30 + Math.max(0, Math.min(1, t)) * 70);
 }
 
-// Igual que spmToHeightPct pero sin recortar a 0-100%: así el ritmo real puede
-// "salirse" del rango del programa (arriba o abajo) y se nota en la gráfica.
-function spmToHeightPctUnclamped(spm, minSpm, maxSpm) {
-  const t = maxSpm > minSpm ? (spm - minSpm) / (maxSpm - minSpm) : 0.5;
-  const pct = 30 + t * 70;
-  return Math.max(0, Math.min(160, pct));
-}
-
 function buildProgramChart(program) {
   const el = $("liveProgramChart");
   const spms = program.segments.map((s) => s.targetSpm);
@@ -400,10 +391,7 @@ function buildProgramChart(program) {
       const [r, g, b] = zoneColor(t);
       return `<div class="chart-bar-item" data-index="${i}" style="flex-grow:${seg.durationSec}">
         <span class="chart-bar-label">${seg.targetSpm}</span>
-        <div class="chart-bar-stack">
-          <div class="chart-bar" style="height:${heightPct}%; background: linear-gradient(180deg, rgba(${r},${g},${b},1), rgba(${r},${g},${b},0.55));"></div>
-          <div class="chart-bar-actual" data-target-height="${heightPct}"></div>
-        </div>
+        <div class="chart-bar" style="height:${heightPct}%; background: linear-gradient(180deg, rgba(${r},${g},${b},1), rgba(${r},${g},${b},0.55));"></div>
       </div>`;
     })
     .join("");
@@ -415,24 +403,7 @@ function updateProgramChartActive(index) {
     const i = Number(item.dataset.index);
     item.classList.toggle("is-active", i === index);
     item.classList.toggle("is-done", i < index);
-    if (i !== index) {
-      const actual = item.querySelector(".chart-bar-actual");
-      if (actual) actual.style.height = "0%";
-    }
   });
-}
-
-// Dibuja el SPM real encima de la barra objetivo del tramo activo: si vas más lento,
-// deja un hueco apagado arriba; si vas más rápido, se sale por encima del tope.
-function updateProgramChartLive(index, currentSpm) {
-  const el = $("liveProgramChart");
-  const item = el.querySelector(`.chart-bar-item[data-index="${index}"]`);
-  if (!item || !currentSpm) return;
-  const actual = item.querySelector(".chart-bar-actual");
-  if (!actual) return;
-  const heightPct = spmToHeightPctUnclamped(currentSpm, state.chartMinSpm, state.chartMaxSpm);
-  actual.style.height = `${heightPct}%`;
-  actual.classList.toggle("is-over", heightPct > 100);
 }
 
 function updateProgramProgress() {

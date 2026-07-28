@@ -1182,8 +1182,7 @@ input:focus {
   align-items: flex-end;
   gap: 3px;
   height: 70px;
-  margin: 20px 0 6px;
-  overflow: visible;
+  margin: 8px 0 6px;
 }
 .chart-bar-item {
   display: flex;
@@ -1194,7 +1193,6 @@ input:focus {
   min-width: 4px;
   opacity: 0.5;
   transition: opacity 200ms ease;
-  overflow: visible;
 }
 .chart-bar-item.is-active { opacity: 1; }
 .chart-bar-item.is-done { opacity: 0.3; }
@@ -1207,44 +1205,14 @@ input:focus {
 }
 .chart-bar-item.is-active .chart-bar-label { color: var(--text); }
 
-.chart-bar-stack {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
 .chart-bar {
-  position: absolute;
-  left: 0;
-  bottom: 0;
   width: 100%;
   border-radius: 4px 4px 0 0;
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.35);
-  transition: opacity 200ms ease;
 }
-.chart-bar-item.is-active .chart-bar-stack {
+.chart-bar-item.is-active .chart-bar {
   outline: 2px solid var(--text);
   outline-offset: 1px;
-  border-radius: 4px 4px 0 0;
-}
-/* Cuando hay ritmo real dibujándose encima, la barra objetivo baja de opacidad
-   para que se note el "hueco" (vas lento) o que el real se salga (vas rápido). */
-.chart-bar-item.is-active .chart-bar { opacity: 0.4; }
-
-.chart-bar-actual {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  height: 0%;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(180deg, #ffffff, #cdd6e0);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-  transition: height 400ms ease;
-}
-.chart-bar-actual.is-over {
-  background: linear-gradient(180deg, #ffe28a, #ffb020);
-  box-shadow: 0 0 10px rgba(255, 176, 32, 0.7);
 }
 
 .live-total-progress { margin-bottom: 4px; }
@@ -1493,3 +1461,18 @@ input:focus {
   font-weight: 600;
   font-size: 14px;
 }
+
+.detail-card { text-align: left; animation: none; }
+.detail-card h2 { text-align: center; }
+.detail-box { display: flex; flex-direction: column; gap: 2px; margin-bottom: 20px; }
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.detail-row span { color: var(--muted); }
+.detail-row strong { font-size: 17px; }
+.detail-row:last-child { border-bottom: none; }

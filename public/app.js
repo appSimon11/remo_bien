@@ -73,6 +73,10 @@ $("#logoutButton").addEventListener("click", async () => {
   authScreen.classList.remove("is-hidden");
 });
 
+$("#sessionDetailClose").addEventListener("click", () => {
+  $("#sessionDetailOverlay").classList.add("is-hidden");
+});
+
 document.querySelectorAll(".nav-button").forEach((button) => {
   button.addEventListener("click", () => showScreen(button.dataset.screen, button));
 });
@@ -131,6 +135,11 @@ $("#sessionsTable").addEventListener("click", async (event) => {
   if (!button) return;
   const id = button.dataset.id;
   const row = JSON.parse(button.closest("[data-session]").dataset.session);
+
+  if (button.dataset.action === "view") {
+    showSessionDetail(row);
+    return;
+  }
 
   if (button.dataset.action === "edit") {
     showScreen("session", document.querySelector('[data-screen="session"]'));
@@ -548,11 +557,40 @@ function renderSessionRow(row) {
       <span>${formatNumber(row.strokesPerMinute)}</span>
       <span>${formatNumber(row.caloriesPerKm)}</span>
       <span class="row-actions">
+        <button class="mini-button" data-action="view" data-id="${row.id}" type="button">Ver</button>
         <button class="mini-button" data-action="edit" data-id="${row.id}" type="button">Editar</button>
         <button class="mini-button danger" data-action="delete" data-id="${row.id}" type="button">Borrar</button>
       </span>
     </div>
   `;
+}
+
+function showSessionDetail(row) {
+  const rows = [];
+  if (row.programName) rows.push(["Programa", row.programName]);
+  rows.push(["Fecha", row.sessionDate]);
+  rows.push(["Duración", row.durationSeconds ? formatDurationSeconds(row.durationSeconds) : formatMinutes(row.durationMinutes)]);
+  rows.push(["Distancia", formatKm(row.kilometers)]);
+  rows.push(["Ritmo promedio", `${row.avgPaceSec500m != null ? formatDurationSeconds(row.avgPaceSec500m) : formatPace(row.pace500m)} /500m`]);
+  rows.push(["SPM promedio", formatNumber(row.avgSpm != null ? row.avgSpm : row.strokesPerMinute)]);
+  if (row.avgPowerW != null) rows.push(["Potencia promedio", `${formatNumber(row.avgPowerW)} W`]);
+  rows.push(["Calorías", formatCalories(row.calories)]);
+  rows.push(["Remadas totales", row.strokes]);
+  if (row.avgHeartRate != null) rows.push(["Pulso promedio", `${formatNumber(row.avgHeartRate)} bpm`]);
+  if (row.metronomeBpm != null) rows.push(["Metrónomo", `${row.metronomeBpm} SPM`]);
+
+  $("#sessionDetailTitle").textContent = row.source === "live" ? "Sesión en vivo" : "Sesión manual";
+  $("#sessionDetailBox").innerHTML = rows
+    .map(([k, v]) => `<div class="detail-row"><span>${k}</span><strong>${v}</strong></div>`)
+    .join("");
+  $("#sessionDetailOverlay").classList.remove("is-hidden");
+}
+
+function formatDurationSeconds(totalSecondsRaw) {
+  const totalSeconds = Math.round(Number(totalSecondsRaw || 0));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 function renderHistory(rows) {
