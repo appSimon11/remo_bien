@@ -1527,7 +1527,7 @@ app.get("/api/forecast", requireDatabase, requireAuth, async (request, response,
     );
 
     const previousKilometers = Number(previous?.kilometers || 0);
-    const goalKilometers = previousKilometers * 1.05;
+    const goalKilometers = 900;
     const initialKilometers = Number(baseline?.initialKilometers || 0);
     const initialDurationMinutes = Number(baseline?.initialDurationMinutes || 0);
     const sessionKilometers = Number(current?.kilometers || 0);
