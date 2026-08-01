@@ -726,6 +726,27 @@ app.post("/api/auth/logout", requireDatabase, async (request, response) => {
   response.json({ ok: true });
 });
 
+app.put("/api/auth/password", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const currentPassword = String(request.body.currentPassword || "");
+    const newPassword = String(request.body.newPassword || "");
+    if (newPassword.length < 4) {
+      return response.status(400).json({ message: "La nueva contraseña debe tener al menos 4 caracteres." });
+    }
+
+    const [[user]] = await pool.execute("SELECT * FROM users WHERE id = ?", [request.user.id]);
+    if (!user || !verifyPassword(currentPassword, user.password_salt, user.password_hash)) {
+      return response.status(401).json({ message: "Tu contraseña actual no es correcta." });
+    }
+
+    const { salt, passwordHash } = hashPassword(newPassword);
+    await pool.execute("UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?", [salt, passwordHash, request.user.id]);
+    response.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/sessions", requireDatabase, requireAuth, async (request, response, next) => {
   try {
     const limit = Math.min(Number.parseInt(request.query.limit || "80", 10) || 80, 300);

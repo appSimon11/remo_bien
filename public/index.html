@@ -74,6 +74,7 @@
             <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
             <div class="goal-needed" id="goalNeededDaily">Necesario hoy: 0 km/día</div>
           </div>
+          <button class="secondary-button small" id="passwordButton" type="button">Cambiar contraseña</button>
           <button class="secondary-button small" id="logoutButton" type="button">Salir</button>
         </div>
       </header>
@@ -580,6 +581,29 @@
         <h2 id="sessionDetailTitle">Sesión</h2>
         <div id="sessionDetailBox" class="detail-box"></div>
         <button class="secondary-button" id="sessionDetailClose" type="button">Cerrar</button>
+      </div>
+    </div>
+
+    <div class="celebrate-overlay is-hidden" id="passwordOverlay">
+      <div class="celebrate-card detail-card">
+        <h2>Cambiar contraseña</h2>
+        <div class="field">
+          <label for="passwordCurrent">Contraseña actual</label>
+          <input id="passwordCurrent" type="password" autocomplete="current-password" required />
+        </div>
+        <div class="field">
+          <label for="passwordNew">Contraseña nueva</label>
+          <input id="passwordNew" type="password" autocomplete="new-password" minlength="4" required />
+        </div>
+        <div class="field">
+          <label for="passwordConfirm">Repite la contraseña nueva</label>
+          <input id="passwordConfirm" type="password" autocomplete="new-password" minlength="4" required />
+        </div>
+        <p class="form-message" id="passwordMessage" role="status"></p>
+        <div class="segmented">
+          <button class="save-button" id="passwordSaveButton" type="button">Guardar contraseña</button>
+          <button class="secondary-button" id="passwordCancelButton" type="button">Cancelar</button>
+        </div>
       </div>
     </div>
 

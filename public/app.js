@@ -74,6 +74,47 @@ $("#logoutButton").addEventListener("click", async () => {
   authScreen.classList.remove("is-hidden");
 });
 
+function setPasswordMessage(message, type) {
+  $("#passwordMessage").textContent = message;
+  $("#passwordMessage").classList.toggle("is-success", type === "success");
+  $("#passwordMessage").classList.toggle("is-error", type === "error");
+}
+
+$("#passwordButton").addEventListener("click", () => {
+  $("#passwordCurrent").value = "";
+  $("#passwordNew").value = "";
+  $("#passwordConfirm").value = "";
+  setPasswordMessage("", "");
+  $("#passwordOverlay").classList.remove("is-hidden");
+});
+
+$("#passwordCancelButton").addEventListener("click", () => {
+  $("#passwordOverlay").classList.add("is-hidden");
+});
+
+$("#passwordSaveButton").addEventListener("click", async () => {
+  const currentPassword = $("#passwordCurrent").value;
+  const newPassword = $("#passwordNew").value;
+  const confirmPassword = $("#passwordConfirm").value;
+
+  if (newPassword.length < 4) {
+    return setPasswordMessage("La contraseña nueva debe tener al menos 4 caracteres.", "error");
+  }
+  if (newPassword !== confirmPassword) {
+    return setPasswordMessage("Las contraseñas nuevas no coinciden.", "error");
+  }
+
+  setPasswordMessage("Guardando...", "");
+  try {
+    const response = await api("/api/auth/password", { method: "PUT", body: { currentPassword, newPassword } });
+    if (!response.ok) throw new Error(response.data.message || "No se pudo cambiar la contraseña.");
+    setPasswordMessage("Contraseña actualizada.", "success");
+    setTimeout(() => $("#passwordOverlay").classList.add("is-hidden"), 900);
+  } catch (error) {
+    setPasswordMessage(error.message, "error");
+  }
+});
+
 $("#sessionDetailClose").addEventListener("click", () => {
   $("#sessionDetailOverlay").classList.add("is-hidden");
 });
