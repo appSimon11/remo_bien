@@ -865,6 +865,18 @@ input:focus {
   font-size: clamp(1.25rem, 2vw, 1.75rem);
 }
 
+.forecast-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.goal-edit-form { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.goal-edit-form input {
+  width: 90px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
 .history-table-card {
   padding: 22px;
 }
@@ -1253,7 +1265,9 @@ input:focus {
 }
 .live-row-3 { grid-template-columns: repeat(3, 1fr); }
 .live-row-2 { grid-template-columns: repeat(2, 1fr); }
+.live-row-1 { grid-template-columns: 1fr; }
 .live-row-2 .live-metric-value { font-size: 34px; }
+.live-row-1 .live-metric-value { font-size: 34px; }
 
 .live-metric {
   background: var(--panel-2);

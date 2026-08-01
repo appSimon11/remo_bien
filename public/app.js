@@ -12,6 +12,7 @@ const periodData = {};
 
 let activePeriod = "day";
 let requiredTodayKilometers = 0;
+let currentGoalKilometers = 0;
 let importRows = [];
 let sessionsList = [];
 
@@ -183,6 +184,31 @@ baselineForm.addEventListener("submit", async (event) => {
 
 $("#resetYearButton").addEventListener("click", async () => {
   await saveBaseline("/api/current-year-reset");
+});
+
+$("#goalEditButton").addEventListener("click", () => {
+  $("#goalEditInput").value = currentGoalKilometers || "";
+  $("#goalEditForm").style.display = "flex";
+});
+
+$("#goalCancelButton").addEventListener("click", () => {
+  $("#goalEditForm").style.display = "none";
+});
+
+$("#goalSaveButton").addEventListener("click", async () => {
+  const goalKilometers = Number($("#goalEditInput").value);
+  if (!Number.isFinite(goalKilometers) || goalKilometers <= 0) {
+    return setForecastMessage("Captura una meta válida en kilómetros.", "error");
+  }
+  try {
+    const response = await api("/api/current-year-goal", { method: "PUT", body: { goalKilometers } });
+    if (!response.ok) throw new Error(response.data.message || "No se pudo guardar la meta.");
+    $("#goalEditForm").style.display = "none";
+    setForecastMessage("Meta actualizada.", "success");
+    await loadForecastArea();
+  } catch (error) {
+    setForecastMessage(error.message, "error");
+  }
 });
 
 importForm.addEventListener("submit", async (event) => {
@@ -484,6 +510,7 @@ function renderCharts(data) {
 
 function renderForecast(data) {
   $("#goalKilometers").textContent = formatKm(data.forecast.goalKilometers);
+  currentGoalKilometers = Number(data.forecast.goalKilometers || 0);
   $("#currentKilometers").textContent = formatKm(data.current.totalKilometers);
   $("#remainingKilometers").textContent = formatKm(data.forecast.remainingKilometers);
   $("#requiredDailyKilometers").textContent = formatKm(data.forecast.requiredDailyKilometers);
@@ -547,7 +574,12 @@ function renderSessions(rows) {
 }
 
 function renderSessionRow(row) {
-  const liveBadge = row.source === "live" ? `<span class="live-badge" title="${row.programName || "Sesión en vivo"}">Vivo</span>` : "";
+  const liveBadge =
+    row.source === "live"
+      ? `<span class="live-badge" title="${row.programName || "Sesión en vivo"}">Vivo</span>`
+      : row.source === "free"
+        ? `<span class="live-badge" title="${row.programName || "Remo libre"}">Libre</span>`
+        : "";
   return `
     <div class="sessions-row" data-session='${JSON.stringify(row)}'>
       <span>${row.sessionDate} ${liveBadge}</span>
@@ -579,7 +611,8 @@ function showSessionDetail(row) {
   if (row.avgHeartRate != null) rows.push(["Pulso promedio", `${formatNumber(row.avgHeartRate)} bpm`]);
   if (row.metronomeBpm != null) rows.push(["Metrónomo", `${row.metronomeBpm} SPM`]);
 
-  $("#sessionDetailTitle").textContent = row.source === "live" ? "Sesión en vivo" : "Sesión manual";
+  $("#sessionDetailTitle").textContent =
+    row.source === "live" ? "Sesión en vivo" : row.source === "free" ? "Remo libre" : "Sesión manual";
   $("#sessionDetailBox").innerHTML = rows
     .map(([k, v]) => `<div class="detail-row"><span>${k}</span><strong>${v}</strong></div>`)
     .join("");

@@ -428,6 +428,7 @@ async function initializeDatabase() {
 
   await addColumnIfMissing("historical_years", "user_id", "user_id INT NULL");
   await addColumnIfMissing("current_year_baselines", "user_id", "user_id INT NULL");
+  await addColumnIfMissing("current_year_baselines", "goal_kilometers", "goal_kilometers DECIMAL(10, 2) NULL");
   await pool.execute("UPDATE rowing_sessions SET user_id = ? WHERE user_id IS NULL", [defaultUserId]);
   await pool.execute("UPDATE historical_years SET user_id = ? WHERE user_id IS NULL", [defaultUserId]);
   await pool.execute("UPDATE current_year_baselines SET user_id = ? WHERE user_id IS NULL", [defaultUserId]);
@@ -548,6 +549,7 @@ function validateLiveSessionPayload(body) {
   if (!Number.isInteger(durationSeconds) || durationSeconds <= 0) return { error: "Duración inválida." };
 
   const optionalNumber = (value) => (value === null || value === undefined || value === "" ? null : Number(value));
+  const source = body.source === "free" ? "free" : "live";
 
   return {
     row: {
@@ -557,6 +559,7 @@ function validateLiveSessionPayload(body) {
       calories: totalCalories,
       durationMinutes: Math.max(1, Math.round(durationSeconds / 60)),
       durationSeconds,
+      source,
       avgSpm: optionalNumber(body.avgSpm),
       avgPowerW: optionalNumber(body.avgPowerW),
       avgPaceSec500m: optionalNumber(body.avgPaceSec500m),
@@ -775,7 +778,7 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
           (user_id, session_date, kilometers, strokes, calories, duration_minutes,
            source, duration_seconds, avg_spm, avg_power_w, avg_pace_sec500m, avg_heart_rate,
            program_name, metronome_bpm, raw_samples_json)
-        VALUES (?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         request.user.id,
@@ -784,6 +787,7 @@ app.post("/api/live-sessions", requireDatabase, requireAuth, async (request, res
         row.strokes,
         row.calories,
         row.durationMinutes,
+        row.source,
         row.durationSeconds,
         row.avgSpm,
         row.avgPowerW,
@@ -1480,6 +1484,27 @@ app.get("/api/current-year-reset-info", requireDatabase, requireAuth, async (req
 app.put("/api/current-year-baseline", requireDatabase, requireAuth, resetCurrentYear);
 app.post("/api/current-year-reset", requireDatabase, requireAuth, resetCurrentYear);
 
+app.put("/api/current-year-goal", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const goalKilometers = Number(request.body.goalKilometers);
+    if (!Number.isFinite(goalKilometers) || goalKilometers <= 0) {
+      return response.status(400).json({ message: "Captura una meta válida en kilómetros." });
+    }
+    const year = currentYear();
+    await pool.execute(
+      `
+        INSERT INTO current_year_baselines (user_id, year, seed_date, initial_kilometers, initial_duration_minutes, goal_kilometers)
+        VALUES (?, ?, ?, 0, 0, ?)
+        ON DUPLICATE KEY UPDATE goal_kilometers = VALUES(goal_kilometers)
+      `,
+      [request.user.id, year, toIsoDate(new Date()), goalKilometers],
+    );
+    response.json({ ok: true, goalKilometers });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/forecast", requireDatabase, requireAuth, async (request, response, next) => {
   try {
     await ensureYearRollover(request.user.id);
@@ -1511,7 +1536,8 @@ app.get("/api/forecast", requireDatabase, requireAuth, async (request, response,
       `
         SELECT DATE_FORMAT(seed_date, '%Y-%m-%d') AS seedDate,
           CAST(initial_kilometers AS DOUBLE) AS initialKilometers,
-          initial_duration_minutes AS initialDurationMinutes
+          initial_duration_minutes AS initialDurationMinutes,
+          CAST(goal_kilometers AS DOUBLE) AS goalKilometers
         FROM current_year_baselines
         WHERE user_id = ? AND year = ?
       `,
@@ -1527,7 +1553,7 @@ app.get("/api/forecast", requireDatabase, requireAuth, async (request, response,
     );
 
     const previousKilometers = Number(previous?.kilometers || 0);
-    const goalKilometers = 900;
+    const goalKilometers = baseline?.goalKilometers > 0 ? Number(baseline.goalKilometers) : 900;
     const initialKilometers = Number(baseline?.initialKilometers || 0);
     const initialDurationMinutes = Number(baseline?.initialDurationMinutes || 0);
     const sessionKilometers = Number(current?.kilometers || 0);

@@ -31,6 +31,8 @@ const state = {
   activeProgram: null,
   programSegmentIndex: -1,
   lastSummary: null,
+  freeMode: false,
+  pendingFreeSummary: null,
 };
 
 // ---------- helpers ----------
@@ -313,7 +315,10 @@ function startSession(program) {
   state.latest = { distance: 0, pace: null, spm: 0, power: 0, cal: 0, hr: null, strokes: 0, elapsed: 0 };
   state.activeProgram = program || null;
   state.programSegmentIndex = -1;
+  state.freeMode = !state.device;
 
+  $("liveBleMetrics").style.display = state.freeMode ? "none" : "";
+  $("liveFreeModeNote").style.display = state.freeMode ? "block" : "none";
   $("liveProgramBanner").style.display = program ? "block" : "none";
   if (program) buildProgramChart(program, $("liveProgramChart"));
   $("liveMetroLive").textContent = `${state.metroBpm} SPM`;
@@ -466,7 +471,17 @@ async function stopSession() {
   renderSummary(summary);
   setLiveScreen("Summary");
 
-  saveSessionWithRetry(summary);
+  if (state.freeMode) {
+    state.pendingFreeSummary = summary;
+    ["liveFreeKm", "liveFreeStrokes", "liveFreeCal", "liveFreeSpm", "liveFreeHr"].forEach((id) => {
+      $(id).value = "";
+    });
+    $("liveFreeMetricsForm").style.display = "block";
+    $("liveSaveStatus").innerHTML = "";
+  } else {
+    $("liveFreeMetricsForm").style.display = "none";
+    saveSessionWithRetry(() => saveSessionToServer(summary));
+  }
 }
 
 // ---------- Guardado con reintentos (la conexión a MySQL se "enfría" tras inactividad) ----------
@@ -496,22 +511,23 @@ async function waitForDatabaseReady(onProgress, maxAttempts = 20, delayMs = 2000
   return false;
 }
 
-function setSaveStatus(kind, text, retrySummary) {
+function setSaveStatus(kind, text, retryPoster) {
   const el = $("liveSaveStatus");
   if (!el) return;
   el.className = `live-save-status live-save-${kind}`;
   el.innerHTML = text;
-  if (kind === "error" && retrySummary) {
+  if (kind === "error" && retryPoster) {
     const btn = document.createElement("button");
     btn.className = "mini-button";
     btn.textContent = "Reintentar";
-    btn.addEventListener("click", () => saveSessionWithRetry(retrySummary));
+    btn.addEventListener("click", () => saveSessionWithRetry(retryPoster));
     el.appendChild(document.createTextNode(" "));
     el.appendChild(btn);
   }
 }
 
-async function saveSessionWithRetry(summary) {
+// poster: función async sin argumentos que hace el POST y regresa la sesión guardada.
+async function saveSessionWithRetry(poster) {
   setSaveStatus("saving", "Guardando sesión...");
 
   const ready = await waitForDatabaseReady((attempt, max) => {
@@ -519,7 +535,7 @@ async function saveSessionWithRetry(summary) {
   });
 
   if (!ready) {
-    setSaveStatus("error", "La base de datos no respondió a tiempo.", summary);
+    setSaveStatus("error", "La base de datos no respondió a tiempo.", poster);
     return;
   }
 
@@ -527,14 +543,14 @@ async function saveSessionWithRetry(summary) {
   for (let attempt = 1; attempt <= maxSaveAttempts; attempt++) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      const saved = await saveSessionToServer(summary);
+      const saved = await poster();
       setSaveStatus("success", "Sesión guardada en tu historial ✓");
       showCelebrationIfAny(saved.brokenRecords, saved.goalsCompleted);
       return;
     } catch (err) {
       if (attempt === maxSaveAttempts) {
         console.error(err);
-        setSaveStatus("error", "No se pudo guardar: " + describeError(err), summary);
+        setSaveStatus("error", "No se pudo guardar: " + describeError(err), poster);
       } else {
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -570,8 +586,19 @@ function buildSummary() {
   };
 }
 
+async function postLiveSession(body) {
+  const response = await fetch("/api/live-sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || "Error del servidor");
+  return data;
+}
+
 async function saveSessionToServer(s) {
-  const body = {
+  return postLiveSession({
     sessionDate: s.date.slice(0, 10),
     kilometers: s.distanceM / 1000,
     strokes: s.strokes,
@@ -584,30 +611,54 @@ async function saveSessionToServer(s) {
     programName: s.programName,
     metronomeBpm: s.metroBpm,
     samples: s.samples,
-  };
-  const response = await fetch("/api/live-sessions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    source: "live",
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || "Error del servidor");
-  return data;
+}
+
+function saveFreeSession() {
+  const summary = state.pendingFreeSummary;
+  if (!summary) return;
+
+  const optionalNumber = (id) => {
+    const raw = $(id).value;
+    return raw === "" ? null : Number(raw);
+  };
+
+  const body = {
+    sessionDate: summary.date.slice(0, 10),
+    kilometers: optionalNumber("liveFreeKm") || 0,
+    strokes: optionalNumber("liveFreeStrokes") || 0,
+    calories: optionalNumber("liveFreeCal") || 0,
+    durationSeconds: summary.durationSec,
+    avgSpm: optionalNumber("liveFreeSpm"),
+    avgHeartRate: optionalNumber("liveFreeHr"),
+    programName: summary.programName,
+    metronomeBpm: summary.metroBpm,
+    samples: [],
+    source: "free",
+  };
+
+  $("liveFreeMetricsForm").style.display = "none";
+  saveSessionWithRetry(() => postLiveSession(body));
 }
 
 function renderSummary(s) {
   const rows = [];
   if (s.programName) rows.push(["Programa", s.programName]);
-  rows.push(
-    ["Duración", fmtTime(s.durationSec)],
-    ["Distancia", `${(s.distanceM / 1000).toFixed(2)} km`],
-    ["Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`],
-    ["SPM promedio", Math.round(s.avgSpm)],
-    ["Potencia promedio", `${Math.round(s.avgPower)} W`],
-    ["Calorías", Math.round(s.calories)],
-    ["Remadas totales", s.strokes],
-    ["Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado"],
-  );
+  rows.push(["Duración", fmtTime(s.durationSec)]);
+  if (state.freeMode) {
+    rows.push(["Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado"]);
+  } else {
+    rows.push(
+      ["Distancia", `${(s.distanceM / 1000).toFixed(2)} km`],
+      ["Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`],
+      ["SPM promedio", Math.round(s.avgSpm)],
+      ["Potencia promedio", `${Math.round(s.avgPower)} W`],
+      ["Calorías", Math.round(s.calories)],
+      ["Remadas totales", s.strokes],
+      ["Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado"],
+    );
+  }
   $("liveSummaryBox").innerHTML = rows
     .map(([k, v]) => `<div class="live-summary-row"><span>${k}</span><strong>${v}</strong></div>`)
     .join("");
@@ -621,12 +672,16 @@ function summaryText(s) {
     `Remo2 — ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`,
     ...(s.programName ? [`Programa: ${s.programName}`] : []),
     `Duración: ${fmtTime(s.durationSec)}`,
-    `Distancia: ${(s.distanceM / 1000).toFixed(2)} km`,
-    `Ritmo promedio: ${fmtPace(s.avgPaceSec500m)} /500m`,
-    `SPM promedio: ${Math.round(s.avgSpm)}`,
-    `Potencia promedio: ${Math.round(s.avgPower)} W`,
-    `Calorías: ${Math.round(s.calories)}`,
-    `Remadas totales: ${s.strokes}`,
+    ...(state.freeMode
+      ? []
+      : [
+          `Distancia: ${(s.distanceM / 1000).toFixed(2)} km`,
+          `Ritmo promedio: ${fmtPace(s.avgPaceSec500m)} /500m`,
+          `SPM promedio: ${Math.round(s.avgSpm)}`,
+          `Potencia promedio: ${Math.round(s.avgPower)} W`,
+          `Calorías: ${Math.round(s.calories)}`,
+          `Remadas totales: ${s.strokes}`,
+        ]),
   ].join("\n");
 }
 
@@ -655,12 +710,16 @@ function buildSummaryCanvas(s) {
   const rows = [
     ...(s.programName ? [["Programa", s.programName]] : []),
     ["Duración", fmtTime(s.durationSec)],
-    ["Distancia", `${(s.distanceM / 1000).toFixed(2)} km`],
-    ["Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`],
-    ["SPM promedio", `${Math.round(s.avgSpm)}`],
-    ["Potencia promedio", `${Math.round(s.avgPower)} W`],
-    ["Calorías", `${Math.round(s.calories)}`],
-    ["Remadas totales", `${s.strokes}`],
+    ...(state.freeMode
+      ? []
+      : [
+          ["Distancia", `${(s.distanceM / 1000).toFixed(2)} km`],
+          ["Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`],
+          ["SPM promedio", `${Math.round(s.avgSpm)}`],
+          ["Potencia promedio", `${Math.round(s.avgPower)} W`],
+          ["Calorías", `${Math.round(s.calories)}`],
+          ["Remadas totales", `${s.strokes}`],
+        ]),
   ];
   let y = 230;
   rows.forEach(([k, v]) => {
@@ -765,7 +824,6 @@ async function renderProgramsList() {
 
   el.querySelectorAll(".btnRunProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (!state.device) return alert("Conecta la remadora primero (pestaña Remo en vivo).");
       const program = programs.find((p) => p.id === Number(btn.dataset.id));
       if (!program) return;
       goToTopScreen("live");
@@ -1101,6 +1159,7 @@ $("liveBtnStart").addEventListener("click", () => {
 });
 
 $("liveBtnStop").addEventListener("click", stopSession);
+$("liveBtnSaveFree").addEventListener("click", saveFreeSession);
 
 function adjustMetroBpm(delta) {
   state.metroBpm = Math.min(40, Math.max(10, state.metroBpm + delta));

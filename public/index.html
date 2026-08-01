@@ -213,7 +213,8 @@
                     </div>
                   </div>
 
-                  <button id="liveBtnStart" class="save-button" type="button" disabled>Iniciar sesión libre</button>
+                  <button id="liveBtnStart" class="save-button" type="button">Iniciar sesión libre</button>
+                  <p class="live-muted">No necesitas conectar la remadora ni una banda de FC — el cronómetro y el metrónomo funcionan solos. Conecta por Bluetooth solo si quieres que la app capture distancia, ritmo, potencia, etc. automáticamente.</p>
                   <a class="secondary-button link-button" href="#" data-goto-screen="programs">Ver programas de entrenamiento</a>
                 </div>
               </div>
@@ -237,20 +238,25 @@
                 <p id="liveProgramNextLabel" class="live-muted"></p>
               </div>
 
-              <div class="live-metrics-row live-row-3">
+              <div class="live-metrics-row live-row-1">
                 <div class="live-metric"><span class="live-metric-value" id="liveMTime">00:00</span><span class="live-metric-label">Tiempo</span></div>
-                <div class="live-metric"><span class="live-metric-value" id="liveMPace">--:--</span><span class="live-metric-label">/500m</span></div>
-                <div class="live-metric"><span class="live-metric-value" id="liveMPower">0</span><span class="live-metric-label">Watts</span></div>
               </div>
-              <div class="live-metrics-row live-row-2">
-                <div class="live-metric"><span class="live-metric-value" id="liveMSpm">0</span><span class="live-metric-label">SPM</span></div>
-                <div class="live-metric"><span class="live-metric-value" id="liveMDistance">0.00</span><span class="live-metric-label">Km</span></div>
+              <div id="liveBleMetrics">
+                <div class="live-metrics-row live-row-3">
+                  <div class="live-metric"><span class="live-metric-value" id="liveMPace">--:--</span><span class="live-metric-label">/500m</span></div>
+                  <div class="live-metric"><span class="live-metric-value" id="liveMPower">0</span><span class="live-metric-label">Watts</span></div>
+                  <div class="live-metric"><span class="live-metric-value" id="liveMSpm">0</span><span class="live-metric-label">SPM</span></div>
+                </div>
+                <div class="live-metrics-row live-row-3">
+                  <div class="live-metric"><span class="live-metric-value" id="liveMDistance">0.00</span><span class="live-metric-label">Km</span></div>
+                  <div class="live-metric"><span class="live-metric-value" id="liveMCal">0</span><span class="live-metric-label">Kcal</span></div>
+                  <div class="live-metric"><span class="live-metric-value" id="liveMHr">--</span><span class="live-metric-label">BPM ❤</span></div>
+                </div>
+                <div class="live-metrics-row live-row-1">
+                  <div class="live-metric"><span class="live-metric-value" id="liveMStrokes">0</span><span class="live-metric-label">Remadas</span></div>
+                </div>
               </div>
-              <div class="live-metrics-row live-row-3">
-                <div class="live-metric"><span class="live-metric-value" id="liveMCal">0</span><span class="live-metric-label">Kcal</span></div>
-                <div class="live-metric"><span class="live-metric-value" id="liveMHr">--</span><span class="live-metric-label">BPM ❤</span></div>
-                <div class="live-metric"><span class="live-metric-value" id="liveMStrokes">0</span><span class="live-metric-label">Remadas</span></div>
-              </div>
+              <p id="liveFreeModeNote" class="live-muted" style="display:none;">Remando sin remadora conectada — al terminar te pregunto los datos que tengas.</p>
 
               <div class="live-card">
                 <div class="field-row">
@@ -272,6 +278,22 @@
             <div id="liveScreenSummary" class="live-screen">
               <h2 class="live-summary-title">¡Sesión terminada!</h2>
               <div id="liveSummaryBox" class="panel live-summary-box"></div>
+
+              <div id="liveFreeMetricsForm" class="live-card" style="display:none;">
+                <h3>Captura los datos que tengas</h3>
+                <p class="live-muted">Deja en blanco lo que tu remadora no te haya dado. El tiempo ya quedó registrado arriba.</p>
+                <div class="live-segment-form">
+                  <label>Km <input id="liveFreeKm" type="number" step="0.01" min="0" placeholder="Ej. 5.2" /></label>
+                  <label>Paladas <input id="liveFreeStrokes" type="number" min="0" placeholder="Ej. 850" /></label>
+                  <label>Kcal <input id="liveFreeCal" type="number" min="0" placeholder="Ej. 300" /></label>
+                </div>
+                <div class="live-segment-form">
+                  <label>SPM prom. <input id="liveFreeSpm" type="number" step="0.1" min="0" placeholder="Ej. 24" /></label>
+                  <label>FC prom. <input id="liveFreeHr" type="number" min="0" placeholder="Ej. 140" /></label>
+                </div>
+                <button id="liveBtnSaveFree" class="save-button" type="button">Guardar sesión</button>
+              </div>
+
               <div id="liveSaveStatus" class="live-save-status"></div>
               <button id="liveBtnShare" class="save-button" type="button">Compartir (Fotos / Notas...)</button>
               <button id="liveBtnBackHome" class="secondary-button" type="button">Volver</button>
@@ -490,7 +512,18 @@
             </div>
 
             <div class="forecast-summary">
-              <article class="panel forecast-card"><span>Meta del año</span><strong id="goalKilometers">0 km</strong></article>
+              <article class="panel forecast-card">
+                <div class="forecast-card-head">
+                  <span>Meta del año</span>
+                  <button id="goalEditButton" class="mini-button" type="button" title="Editar meta">✎</button>
+                </div>
+                <strong id="goalKilometers">0 km</strong>
+                <div id="goalEditForm" class="goal-edit-form" style="display:none;">
+                  <input id="goalEditInput" type="number" inputmode="decimal" min="1" step="1" placeholder="Ej. 900" />
+                  <button id="goalSaveButton" class="mini-button" type="button">Guardar</button>
+                  <button id="goalCancelButton" class="mini-button" type="button">Cancelar</button>
+                </div>
+              </article>
               <article class="panel forecast-card"><span>Avance actual</span><strong id="currentKilometers">0 km</strong></article>
               <article class="panel forecast-card"><span>Faltan</span><strong id="remainingKilometers">0 km</strong></article>
               <article class="panel forecast-card"><span>Necesitas por día</span><strong id="requiredDailyKilometers">0 km</strong></article>
