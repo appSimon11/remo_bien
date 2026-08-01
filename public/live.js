@@ -26,6 +26,7 @@ const state = {
   samples: [],
   latest: { distance: 0, pace: null, spm: 0, power: 0, cal: 0, hr: null, strokes: 0, elapsed: 0 },
   editorSegments: [],
+  blockSegments: [],
   editingProgramId: null,
   activeProgram: null,
   programSegmentIndex: -1,
@@ -314,7 +315,7 @@ function startSession(program) {
   state.programSegmentIndex = -1;
 
   $("liveProgramBanner").style.display = program ? "block" : "none";
-  if (program) buildProgramChart(program);
+  if (program) buildProgramChart(program, $("liveProgramChart"));
   $("liveMetroLive").textContent = `${state.metroBpm} SPM`;
   $("liveBtnMetroToggle").textContent = "Pausar";
 
@@ -378,16 +379,24 @@ function spmToHeightPct(spm, minSpm, maxSpm) {
   return Math.round(30 + Math.max(0, Math.min(1, t)) * 70);
 }
 
-function buildProgramChart(program) {
-  const el = $("liveProgramChart");
+function buildProgramChart(program, el) {
+  if (!el) return;
+  if (!program.segments.length) {
+    el.innerHTML = "";
+    return;
+  }
   const spms = program.segments.map((s) => s.targetSpm);
-  state.chartMinSpm = Math.min(...spms);
-  state.chartMaxSpm = Math.max(...spms);
+  const minSpm = Math.min(...spms);
+  const maxSpm = Math.max(...spms);
+  if (el === $("liveProgramChart")) {
+    state.chartMinSpm = minSpm;
+    state.chartMaxSpm = maxSpm;
+  }
 
   el.innerHTML = program.segments
     .map((seg, i) => {
-      const t = state.chartMaxSpm > state.chartMinSpm ? (seg.targetSpm - state.chartMinSpm) / (state.chartMaxSpm - state.chartMinSpm) : 0.5;
-      const heightPct = spmToHeightPct(seg.targetSpm, state.chartMinSpm, state.chartMaxSpm);
+      const t = maxSpm > minSpm ? (seg.targetSpm - minSpm) / (maxSpm - minSpm) : 0.5;
+      const heightPct = spmToHeightPct(seg.targetSpm, minSpm, maxSpm);
       const [r, g, b] = zoneColor(t);
       return `<div class="chart-bar-item" data-index="${i}" style="flex-grow:${seg.durationSec}">
         <span class="chart-bar-label">${seg.targetSpm}</span>
@@ -738,16 +747,21 @@ async function renderProgramsList() {
   el.innerHTML = programs
     .map((p) => {
       const total = fmtTime(programTotalDuration(p));
-      return `<div class="live-list-item">
-        <span>${p.name} — ${p.segments.length} tramos — ${total}</span>
-        <div class="live-item-actions">
-          <button data-id="${p.id}" class="mini-button btnRunProgram">Iniciar</button>
-          <button data-id="${p.id}" class="mini-button btnEditProgram">Editar</button>
-          <button data-id="${p.id}" class="mini-button danger btnDeleteProgram">Borrar</button>
+      return `<div class="live-list-item live-list-item-column">
+        <div class="live-list-item-row">
+          <span>${p.name} — ${p.segments.length} tramos — ${total}</span>
+          <div class="live-item-actions">
+            <button data-id="${p.id}" class="mini-button btnRunProgram">Iniciar</button>
+            <button data-id="${p.id}" class="mini-button btnEditProgram">Editar</button>
+            <button data-id="${p.id}" class="mini-button danger btnDeleteProgram">Borrar</button>
+          </div>
         </div>
+        <div id="programChart-${p.id}" class="live-program-chart"></div>
       </div>`;
     })
     .join("");
+
+  programs.forEach((p) => buildProgramChart(p, $(`programChart-${p.id}`)));
 
   el.querySelectorAll(".btnRunProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -780,8 +794,10 @@ async function renderProgramsList() {
 function openProgramEditor(existing) {
   state.editingProgramId = existing ? existing.id : null;
   state.editorSegments = existing ? existing.segments.map((s) => ({ ...s })) : [];
+  state.blockSegments = [];
   $("liveProgramName").value = existing ? existing.name : "";
   renderSegmentsList();
+  renderBlockSegmentsList();
   setLiveScreen("ProgramEditor");
 }
 
@@ -805,6 +821,7 @@ function renderSegmentsList() {
   }
   const total = state.editorSegments.reduce((a, s) => a + s.durationSec, 0);
   $("liveProgramTotal").textContent = state.editorSegments.length ? `Duración total: ${fmtTime(total)}` : "";
+  buildProgramChart({ segments: state.editorSegments }, $("liveEditorChart"));
 }
 
 function addSegment() {
@@ -814,6 +831,50 @@ function addSegment() {
   const durationSec = min * 60 + sec;
   if (durationSec <= 0) return alert("La duración del tramo debe ser mayor a cero.");
   state.editorSegments.push({ durationSec, targetSpm: spm });
+  renderSegmentsList();
+}
+
+function renderBlockSegmentsList() {
+  const el = $("liveBlockSegmentsList");
+  if (!state.blockSegments.length) {
+    el.innerHTML = `<p class="live-muted">Sin tramos en el bloque. Agrega el primero arriba.</p>`;
+  } else {
+    el.innerHTML = state.blockSegments
+      .map((seg, i) => `<div class="live-list-item">
+        <span>${i + 1}. ${fmtTime(seg.durationSec)} @ ${seg.targetSpm} SPM</span>
+        <button data-i="${i}" class="mini-button danger btnRemoveBlockSegment">×</button>
+      </div>`)
+      .join("");
+    el.querySelectorAll(".btnRemoveBlockSegment").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.blockSegments.splice(parseInt(btn.dataset.i, 10), 1);
+        renderBlockSegmentsList();
+      });
+    });
+  }
+}
+
+function addBlockSegment() {
+  const min = parseInt($("liveBlockSegMin").value, 10) || 0;
+  const sec = parseInt($("liveBlockSegSec").value, 10) || 0;
+  const spm = parseInt($("liveBlockSegSpm").value, 10) || 22;
+  const durationSec = min * 60 + sec;
+  if (durationSec <= 0) return alert("La duración del tramo debe ser mayor a cero.");
+  state.blockSegments.push({ durationSec, targetSpm: spm });
+  renderBlockSegmentsList();
+}
+
+function addBlockToProgram() {
+  if (!state.blockSegments.length) return alert("Agrega al menos un tramo al bloque.");
+  const repeats = parseInt($("liveBlockRepeat").value, 10) || 0;
+  if (repeats <= 0) return alert("Las repeticiones deben ser mayores a cero.");
+  for (let i = 0; i < repeats; i += 1) {
+    for (const seg of state.blockSegments) {
+      state.editorSegments.push({ ...seg });
+    }
+  }
+  state.blockSegments = [];
+  renderBlockSegmentsList();
   renderSegmentsList();
 }
 
@@ -1076,5 +1137,7 @@ document.querySelector('.nav-button[data-screen="programs"]').addEventListener("
 });
 $("liveBtnNewProgram").addEventListener("click", () => openProgramEditor(null));
 $("liveBtnAddSegment").addEventListener("click", addSegment);
+$("liveBtnAddBlockSegment").addEventListener("click", addBlockSegment);
+$("liveBtnAddBlockToProgram").addEventListener("click", addBlockToProgram);
 $("liveBtnSaveProgram").addEventListener("click", saveProgramFromEditor);
 $("liveBtnCancelProgram").addEventListener("click", () => setLiveScreen("Programs"));

@@ -298,6 +298,7 @@
                 <label for="liveProgramName">Nombre</label>
                 <input id="liveProgramName" type="text" placeholder="Ej. Pirámide 22-26-30" />
               </div>
+              <div id="liveEditorChart" class="live-program-chart"></div>
               <div class="live-card">
                 <h3>Agregar tramo</h3>
                 <div class="live-segment-form">
@@ -305,6 +306,21 @@
                   <label>Seg <input id="liveSegSec" type="number" value="0" min="0" max="59" step="5" /></label>
                   <label>SPM <input id="liveSegSpm" type="number" value="22" min="10" max="40" /></label>
                   <button id="liveBtnAddSegment" class="mini-button" type="button">Agregar</button>
+                </div>
+              </div>
+              <div class="live-card">
+                <h3>Repetir bloque</h3>
+                <p class="live-muted">Arma un bloque corto (ej. 1 min @ 28, 2 min @ 23) y agrégalo varias veces sin repetir el formulario.</p>
+                <div class="live-segment-form">
+                  <label>Min <input id="liveBlockSegMin" type="number" value="1" min="0" max="120" /></label>
+                  <label>Seg <input id="liveBlockSegSec" type="number" value="0" min="0" max="59" step="5" /></label>
+                  <label>SPM <input id="liveBlockSegSpm" type="number" value="22" min="10" max="40" /></label>
+                  <button id="liveBtnAddBlockSegment" class="mini-button" type="button">Agregar al bloque</button>
+                </div>
+                <div id="liveBlockSegmentsList" class="live-list"></div>
+                <div class="live-segment-form">
+                  <label>Repeticiones <input id="liveBlockRepeat" type="number" value="2" min="1" max="50" /></label>
+                  <button id="liveBtnAddBlockToProgram" class="mini-button" type="button">Agregar bloque al programa</button>
                 </div>
               </div>
               <div id="liveSegmentsList" class="live-list"></div>
