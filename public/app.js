@@ -119,7 +119,7 @@ $("#sessionDetailClose").addEventListener("click", () => {
   $("#sessionDetailOverlay").classList.add("is-hidden");
 });
 
-document.querySelectorAll(".nav-button").forEach((button) => {
+document.querySelectorAll(".nav-button[data-screen]").forEach((button) => {
   button.addEventListener("click", () => showScreen(button.dataset.screen, button));
 });
 

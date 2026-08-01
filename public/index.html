@@ -74,7 +74,6 @@
             <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
             <div class="goal-needed" id="goalNeededDaily">Necesario hoy: 0 km/día</div>
           </div>
-          <button class="secondary-button small" id="passwordButton" type="button">Cambiar contraseña</button>
           <button class="secondary-button small" id="logoutButton" type="button">Salir</button>
         </div>
       </header>
@@ -113,6 +112,11 @@
           <button class="nav-button" data-screen="import" type="button">
             <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v14M8 3L4 7M8 3l4 4M16 21V7M16 21l-4-4M16 21l4-4"/></svg>
             Importar / Exportar
+          </button>
+          <div class="nav-separator"></div>
+          <button class="nav-button" id="passwordButton" type="button">
+            <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V7a5 5 0 0110 0v4M5 11h14v10H5z"/></svg>
+            Cambiar contraseña
           </button>
         </aside>
 
@@ -191,7 +195,7 @@
 
             <!-- Live: setup -->
             <div id="liveScreenSetup" class="live-screen live-screen-active">
-              <div class="entry-grid">
+              <div class="entry-grid entry-grid-single">
                 <div class="panel form-card">
                   <button id="liveBtnConnect" class="save-button" type="button">Conectar remadora (Bluetooth)</button>
                   <p id="liveDeviceName" class="live-muted"></p>

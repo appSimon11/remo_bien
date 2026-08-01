@@ -279,6 +279,12 @@ aside {
   color: var(--text);
 }
 
+.nav-separator {
+  height: 1px;
+  margin: 8px 4px 14px;
+  background: var(--line);
+}
+
 .nav-icon {
   flex-shrink: 0;
   width: 18px;
@@ -339,6 +345,10 @@ main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 0.75fr;
   gap: 22px;
+}
+
+.entry-grid-single {
+  grid-template-columns: minmax(0, 640px);
 }
 
 .panel {
