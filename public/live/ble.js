@@ -6,8 +6,27 @@ import { updateDashboard, recordSample } from "./session.js";
 
 const FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb";
 const ROWER_DATA_CHAR = "00002ad1-0000-1000-8000-00805f9b34fb";
+const CONTROL_POINT_CHAR = "00002ad9-0000-1000-8000-00805f9b34fb";
 const HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb";
 const HEART_RATE_CHAR = "00002a37-0000-1000-8000-00805f9b34fb";
+
+let packetsReceived = 0;
+
+// Algunas remadoras FTMS se quedan "conectadas" pero nunca mandan datos hasta que la app
+// le "pide control" y le dice "arranca" por el Control Point — sin esto, la suscripción a
+// Rower Data se queda callada para siempre aunque no haya ningún error. Es un intento best-
+// effort: si la remadora no tiene este característico o no le importa, simplemente no pasa nada.
+async function kickStartFtmsMachine(service) {
+  try {
+    const controlPoint = await service.getCharacteristic(CONTROL_POINT_CHAR);
+    await controlPoint.startNotifications();
+    await controlPoint.writeValue(new Uint8Array([0x00])); // Request Control
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await controlPoint.writeValue(new Uint8Array([0x07])); // Start or Resume
+  } catch (err) {
+    console.warn("Control Point FTMS no disponible o no aceptado (puede ser normal):", err);
+  }
+}
 
 function parseRowerData(dataView) {
   let offset = 0;
@@ -46,6 +65,10 @@ function parseRowerData(dataView) {
 }
 
 function onRowerData(event) {
+  packetsReceived += 1;
+  const diag = $("liveDeviceDiag");
+  if (diag) diag.textContent = `Datos recibidos: ${packetsReceived}`;
+
   const parsed = parseRowerData(event.target.value);
   if (parsed.strokeRate != null) state.latest.spm = parsed.strokeRate;
   if (parsed.strokeCount != null) state.latest.strokes = parsed.strokeCount;
@@ -88,6 +111,10 @@ export async function connect() {
     const char = await service.getCharacteristic(ROWER_DATA_CHAR);
     await char.startNotifications();
     char.addEventListener("characteristicvaluechanged", onRowerData);
+
+    packetsReceived = 0;
+    $("liveDeviceDiag").textContent = "Esperando datos de la remadora...";
+    await kickStartFtmsMachine(service);
 
     setConnState(true);
     $("liveBtnStart").disabled = false;
