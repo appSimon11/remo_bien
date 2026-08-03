@@ -1508,3 +1508,11 @@ input:focus {
 .detail-row span { color: var(--muted); }
 .detail-row strong { font-size: 17px; }
 .detail-row:last-child { border-bottom: none; }
+
+.live-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.live-header-right .live-muted { font-size: 12px; text-align: right; }

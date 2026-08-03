@@ -190,7 +190,10 @@
                 <h2>Remo en vivo</h2>
                 <p>Conecta la remadora por Bluetooth y captura la sesión directo a tu historial.</p>
               </div>
-              <div id="liveConnState" class="live-pill live-pill-off">Desconectado</div>
+              <div class="live-header-right">
+                <div id="liveConnState" class="live-pill live-pill-off">Desconectado</div>
+                <p id="liveDeviceDiag" class="live-muted">Datos recibidos: --</p>
+              </div>
             </div>
 
             <!-- Live: setup -->
@@ -199,7 +202,6 @@
                 <div class="panel form-card">
                   <button id="liveBtnConnect" class="save-button" type="button">Conectar remadora (Bluetooth)</button>
                   <p id="liveDeviceName" class="live-muted"></p>
-                  <p id="liveDeviceDiag" class="live-muted"></p>
                   <button id="liveBtnConnectHr" class="save-button" type="button">Conectar banda de FC (Bluetooth)</button>
                   <p id="liveHrDeviceName" class="live-muted"></p>
 
