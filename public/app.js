@@ -1,3 +1,5 @@
+import { computeStats, drawSparkline } from "./live/sparkline.js";
+
 const formatter = new Intl.DateTimeFormat("es-MX", {
   weekday: "long",
   day: "numeric",
@@ -638,26 +640,64 @@ function renderSessionRow(row) {
   `;
 }
 
-function showSessionDetail(row) {
-  const rows = [];
-  if (row.programName) rows.push(["Programa", row.programName]);
-  rows.push(["Fecha", row.sessionDate]);
-  rows.push(["Duración", row.durationSeconds ? formatDurationSeconds(row.durationSeconds) : formatMinutes(row.durationMinutes)]);
-  rows.push(["Distancia", formatKm(row.kilometers)]);
-  rows.push(["Ritmo promedio", `${row.avgPaceSec500m != null ? formatDurationSeconds(row.avgPaceSec500m) : formatPace(row.pace500m)} /500m`]);
-  rows.push(["SPM promedio", formatNumber(row.avgSpm != null ? row.avgSpm : row.strokesPerMinute)]);
-  if (row.avgPowerW != null) rows.push(["Potencia promedio", `${formatNumber(row.avgPowerW)} W`]);
-  rows.push(["Calorías", formatCalories(row.calories)]);
-  rows.push(["Remadas totales", row.strokes]);
-  if (row.avgHeartRate != null) rows.push(["Pulso promedio", `${formatNumber(row.avgHeartRate)} bpm`]);
-  if (row.metronomeBpm != null) rows.push(["Metrónomo", `${row.metronomeBpm} SPM`]);
+const DETAIL_METRICS = [
+  { id: "sessionDetailSparkSpm", label: "SPM", key: "spm", unit: "spm" },
+  { id: "sessionDetailSparkPower", label: "Potencia", key: "power_w", unit: "W" },
+  { id: "sessionDetailSparkHr", label: "Pulso", key: "hr", unit: "bpm" },
+];
 
-  $("#sessionDetailTitle").textContent =
-    row.source === "live" ? "Sesión en vivo" : row.source === "free" ? "Remo libre" : "Sesión manual";
-  $("#sessionDetailBox").innerHTML = rows
-    .map(([k, v]) => `<div class="detail-row"><span>${k}</span><strong>${v}</strong></div>`)
-    .join("");
+function detailRowsHtml(rows) {
+  return rows.map(([k, v]) => `<div class="detail-row"><span>${k}</span><strong>${v}</strong></div>`).join("");
+}
+
+async function showSessionDetail(row) {
+  const isLive = row.source === "live";
+
+  const headRows = [];
+  if (row.programName) headRows.push(["Programa", row.programName]);
+  headRows.push(["Fecha", row.sessionDate]);
+  headRows.push(["Duración", row.durationSeconds ? formatDurationSeconds(row.durationSeconds) : formatMinutes(row.durationMinutes)]);
+  headRows.push(["Distancia", formatKm(row.kilometers)]);
+  headRows.push(["Ritmo promedio", `${row.avgPaceSec500m != null ? formatDurationSeconds(row.avgPaceSec500m) : formatPace(row.pace500m)} /500m`]);
+
+  const tailRows = [];
+  if (!isLive) {
+    tailRows.push(["SPM promedio", formatNumber(row.avgSpm != null ? row.avgSpm : row.strokesPerMinute)]);
+    if (row.avgPowerW != null) tailRows.push(["Potencia promedio", `${formatNumber(row.avgPowerW)} W`]);
+  }
+  tailRows.push(["Calorías", formatCalories(row.calories)]);
+  tailRows.push(["Remadas totales", row.strokes]);
+  if (!isLive && row.avgHeartRate != null) tailRows.push(["Pulso promedio", `${formatNumber(row.avgHeartRate)} bpm`]);
+  if (row.metronomeBpm != null) tailRows.push(["Metrónomo", `${row.metronomeBpm} SPM`]);
+
+  const metricSlots = isLive
+    ? DETAIL_METRICS.map(({ id }) => `<div class="detail-metric-slot" data-metric-id="${id}"></div>`).join("")
+    : "";
+
+  $("#sessionDetailTitle").textContent = isLive ? "Sesión en vivo" : row.source === "free" ? "Remo libre" : "Sesión manual";
+  $("#sessionDetailBox").innerHTML = detailRowsHtml(headRows) + metricSlots + detailRowsHtml(tailRows);
   $("#sessionDetailOverlay").classList.remove("is-hidden");
+
+  if (!isLive) return;
+  try {
+    const response = await api(`/api/live-sessions/${row.id}/samples`);
+    const samples = response.ok ? response.data.samples || [] : [];
+
+    DETAIL_METRICS.forEach(({ id, label, key, unit }) => {
+      const slot = $("#sessionDetailBox").querySelector(`[data-metric-id="${id}"]`);
+      if (!slot) return;
+      const series = samples.map((sample) => ({ t: sample.t, v: sample[key] }));
+      const stats = computeStats(series.map((p) => p.v));
+      if (stats.count < 2) {
+        slot.remove();
+        return;
+      }
+      slot.innerHTML = `<canvas id="${id}" class="detail-spark"></canvas><div class="detail-row"><span>${label} (prom / máx / mín)</span><strong>${Math.round(stats.avg)} / ${Math.round(stats.max)} / ${Math.round(stats.min)}</strong></div>`;
+      drawSparkline($(`#${id}`), series, { unit, decimals: 0 });
+    });
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function formatDurationSeconds(totalSecondsRaw) {

@@ -1366,6 +1366,24 @@ input:focus {
 .live-summary-box .live-summary-row strong { font-size: 26px; }
 .live-summary-box .live-summary-row:last-child { border-bottom: none; }
 
+.summary-spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+  margin: 12px 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.detail-spark {
+  display: block;
+  width: 100%;
+  height: 56px;
+  margin: 4px 0 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .live-save-status {
   max-width: 560px;
   margin: 14px 0 20px;

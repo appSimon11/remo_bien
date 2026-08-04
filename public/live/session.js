@@ -6,6 +6,7 @@ import { buildProgramChart, updateProgramChartActive, segmentAtElapsed, programT
 import { startMetronome, stopMetronome } from "./metronome.js";
 import { showCelebrationIfAny } from "./goalsRecords.js";
 import { liveApi } from "./api.js";
+import { computeStats, drawSparkline } from "./sparkline.js";
 
 const PENDING_SESSION_KEY = "remo2_pending_session";
 
@@ -345,25 +346,52 @@ export function saveFreeSession() {
   saveSessionWithRetry(() => liveApi("/api/live-sessions", { method: "POST", body }));
 }
 
+// Arma el bloque de "gráfica continua + prom/máx/mín" para una métrica dada (SPM,
+// potencia, pulso). Si no hay al menos 2 muestras válidas, solo se ve el texto "--".
+function metricSparkBlock(id, label, sampleKey, samples, unit) {
+  const series = samples.map((sample) => ({ t: sample.t, v: sample[sampleKey] }));
+  const stats = computeStats(series.map((p) => p.v));
+  const valueText = stats.count
+    ? `${Math.round(stats.avg)} / ${Math.round(stats.max)} / ${Math.round(stats.min)}`
+    : "--";
+  const canvasHtml = stats.count > 1 ? `<canvas id="${id}" class="summary-spark"></canvas>` : "";
+  return {
+    html: `${canvasHtml}<div class="live-summary-row"><span>${label} (prom / máx / mín)</span><strong>${valueText}</strong></div>`,
+    draw: stats.count > 1 ? () => drawSparkline($(id), series, { unit, decimals: 0 }) : null,
+  };
+}
+
 function renderSummary(s) {
-  const rows = [];
-  if (s.programName) rows.push(["Programa", s.programName]);
-  rows.push(["Duración", fmtTime(s.durationSec)]);
+  const blocks = [];
+  const draws = [];
+  const row = (k, v) => blocks.push(`<div class="live-summary-row"><span>${k}</span><strong>${v}</strong></div>`);
+
+  if (s.programName) row("Programa", s.programName);
+  row("Duración", fmtTime(s.durationSec));
+
   if (state.freeMode) {
-    rows.push(["Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado"]);
+    row("Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado");
   } else {
-    rows.push(
-      ["Distancia", `${(s.distanceM / 1000).toFixed(2)} km`],
-      ["Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`],
-      ["SPM promedio", Math.round(s.avgSpm)],
-      ["Potencia promedio", `${Math.round(s.avgPower)} W`],
-      ["Calorías", Math.round(s.calories)],
-      ["Remadas totales", s.strokes],
-      ["Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado"],
-    );
+    const samples = s.samples || [];
+    row("Distancia", `${(s.distanceM / 1000).toFixed(2)} km`);
+    row("Ritmo promedio", `${fmtPace(s.avgPaceSec500m)} /500m`);
+
+    [
+      ["liveSummarySparkSpm", "SPM", "spm", "spm"],
+      ["liveSummarySparkPower", "Potencia", "power_w", "W"],
+      ["liveSummarySparkHr", "Pulso", "hr", "bpm"],
+    ].forEach(([id, label, key, unit]) => {
+      const block = metricSparkBlock(id, label, key, samples, unit);
+      blocks.push(block.html);
+      if (block.draw) draws.push(block.draw);
+    });
+
+    row("Calorías", Math.round(s.calories));
+    row("Remadas totales", s.strokes);
+    row("Metrónomo", s.metroBpm ? `${s.metroBpm} SPM` : "Desactivado");
   }
-  $("liveSummaryBox").innerHTML = rows
-    .map(([k, v]) => `<div class="live-summary-row"><span>${k}</span><strong>${v}</strong></div>`)
-    .join("");
+
+  $("liveSummaryBox").innerHTML = blocks.join("");
+  draws.forEach((draw) => draw());
   state.lastSummary = s;
 }
