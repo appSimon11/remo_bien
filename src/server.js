@@ -394,6 +394,7 @@ async function initializeDatabase() {
     )
   `);
   await ensureUniqueIndex("training_programs", "idx_training_programs_user", "INDEX idx_training_programs_user (user_id)");
+  await addColumnIfMissing("training_programs", "completed", "completed TINYINT(1) NOT NULL DEFAULT 0");
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS goals (
@@ -878,6 +879,7 @@ function programRowToJson(row) {
     id: row.id,
     name: row.name,
     segments: JSON.parse(row.segments_json),
+    completed: Boolean(row.completed),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -927,6 +929,21 @@ app.put("/api/programs/:id", requireDatabase, requireAuth, async (request, respo
       request.user.id,
     ]);
     response.json(programRowToJson(updated));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/programs/:id/completed", requireDatabase, requireAuth, async (request, response, next) => {
+  try {
+    const completed = Boolean(request.body.completed);
+    const [update] = await pool.execute("UPDATE training_programs SET completed = ? WHERE id = ? AND user_id = ?", [
+      completed ? 1 : 0,
+      request.params.id,
+      request.user.id,
+    ]);
+    if (update.affectedRows === 0) return response.status(404).json({ message: "No encontré ese programa." });
+    response.json({ ok: true, completed });
   } catch (error) {
     next(error);
   }

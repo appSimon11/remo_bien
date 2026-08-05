@@ -21,6 +21,8 @@ import {
   addBlockSegment,
   addBlockToProgram,
   saveProgramFromEditor,
+  setProgramFilter,
+  toggleProgramSort,
 } from "./live/programs.js";
 import { renderGoalsList, renderRecordsGrid, hideCelebration } from "./live/goalsRecords.js";
 import { shareSummary } from "./live/share.js";
@@ -124,6 +126,10 @@ document.querySelector('.nav-button[data-screen="programs"]').addEventListener("
   renderProgramsList();
 });
 $("liveBtnNewProgram").addEventListener("click", () => openProgramEditor(null));
+document.querySelectorAll("#liveProgramFilterGroup [data-filter]").forEach((btn) => {
+  btn.addEventListener("click", () => setProgramFilter(btn.dataset.filter));
+});
+$("liveBtnProgramSort").addEventListener("click", toggleProgramSort);
 $("liveBtnAddSegment").addEventListener("click", addSegment);
 $("liveBtnAddBlockSegment").addEventListener("click", addBlockSegment);
 $("liveBtnAddBlockToProgram").addEventListener("click", addBlockToProgram);

@@ -326,6 +326,14 @@
             <!-- Programas: lista -->
             <div id="liveScreenPrograms" class="live-screen live-screen-active">
               <button id="liveBtnNewProgram" class="save-button" type="button">+ Nuevo programa</button>
+              <div class="live-programs-toolbar">
+                <div class="live-filter-group" id="liveProgramFilterGroup">
+                  <button class="mini-button is-active" data-filter="all" type="button">Todos</button>
+                  <button class="mini-button" data-filter="pending" type="button">Pendientes</button>
+                  <button class="mini-button" data-filter="done" type="button">Hechos</button>
+                </div>
+                <button id="liveBtnProgramSort" class="mini-button" type="button">Más nuevos primero ↓</button>
+              </div>
               <div id="liveProgramsList" class="live-list"></div>
             </div>
 

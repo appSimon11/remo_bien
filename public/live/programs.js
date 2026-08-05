@@ -9,28 +9,101 @@ function loadPrograms() {
   return liveApi("/api/programs");
 }
 
+const FILTER_KEY = "remo2_program_filter";
+const SORT_KEY = "remo2_program_sort";
+
+function getProgramFilter() {
+  try {
+    return localStorage.getItem(FILTER_KEY) || "all";
+  } catch {
+    return "all";
+  }
+}
+
+function getProgramSort() {
+  try {
+    return localStorage.getItem(SORT_KEY) || "desc";
+  } catch {
+    return "desc";
+  }
+}
+
+function syncProgramsToolbar() {
+  const filter = getProgramFilter();
+  document.querySelectorAll("#liveProgramFilterGroup [data-filter]").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.filter === filter);
+  });
+  const sortBtn = $("liveBtnProgramSort");
+  if (sortBtn) sortBtn.textContent = getProgramSort() === "desc" ? "Más nuevos primero ↓" : "Más antiguos primero ↑";
+}
+
+export function setProgramFilter(filter) {
+  try {
+    localStorage.setItem(FILTER_KEY, filter);
+  } catch {
+    /* localStorage lleno o no disponible: seguimos sin persistir la preferencia. */
+  }
+  renderFilteredPrograms();
+}
+
+export function toggleProgramSort() {
+  const next = getProgramSort() === "desc" ? "asc" : "desc";
+  try {
+    localStorage.setItem(SORT_KEY, next);
+  } catch {
+    /* localStorage lleno o no disponible: seguimos sin persistir la preferencia. */
+  }
+  renderFilteredPrograms();
+}
+
 export async function renderProgramsList() {
   const el = $("liveProgramsList");
   el.innerHTML = `<p class="live-muted">Cargando...</p>`;
 
-  let programs;
   try {
-    programs = await loadPrograms();
+    state.allPrograms = await loadPrograms();
   } catch (err) {
     el.innerHTML = `<p class="live-muted">No se pudieron cargar los programas: ${describeError(err)}</p>`;
     return;
   }
 
-  if (!programs.length) {
+  renderFilteredPrograms();
+}
+
+function renderFilteredPrograms() {
+  syncProgramsToolbar();
+  const el = $("liveProgramsList");
+  const allPrograms = state.allPrograms || [];
+  const filter = getProgramFilter();
+  const sort = getProgramSort();
+
+  let programs = allPrograms;
+  if (filter === "done") programs = allPrograms.filter((p) => p.completed);
+  else if (filter === "pending") programs = allPrograms.filter((p) => !p.completed);
+
+  programs = [...programs].sort((a, b) => {
+    const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return sort === "asc" ? diff : -diff;
+  });
+
+  if (!allPrograms.length) {
     el.innerHTML = `<p class="live-muted">Sin programas guardados.</p>`;
     return;
   }
+  if (!programs.length) {
+    el.innerHTML = `<p class="live-muted">Ningún programa coincide con este filtro.</p>`;
+    return;
+  }
+
   el.innerHTML = programs
     .map((p) => {
       const total = fmtTime(programTotalDuration(p));
-      return `<div class="live-list-item live-list-item-column">
+      return `<div class="live-list-item live-list-item-column${p.completed ? " is-done" : ""}">
         <div class="live-list-item-row">
-          <span>${p.name} — ${p.segments.length} tramos — ${total}</span>
+          <label class="live-check">
+            <input type="checkbox" data-id="${p.id}" class="chkProgramDone" ${p.completed ? "checked" : ""} />
+            <span>${p.name} — ${p.segments.length} tramos — ${total}</span>
+          </label>
           <div class="live-item-actions">
             <button data-id="${p.id}" class="mini-button btnRunProgram">Iniciar</button>
             <button data-id="${p.id}" class="mini-button btnEditProgram">Editar</button>
@@ -44,6 +117,21 @@ export async function renderProgramsList() {
 
   programs.forEach((p) => buildProgramChart(p, $(`programChart-${p.id}`)));
 
+  el.querySelectorAll(".chkProgramDone").forEach((chk) => {
+    chk.addEventListener("change", async () => {
+      const id = Number(chk.dataset.id);
+      const completed = chk.checked;
+      try {
+        await liveApi(`/api/programs/${id}/completed`, { method: "PUT", body: { completed } });
+        const program = allPrograms.find((p) => p.id === id);
+        if (program) program.completed = completed;
+        renderFilteredPrograms();
+      } catch (err) {
+        chk.checked = !completed;
+        alert("No se pudo actualizar: " + describeError(err));
+      }
+    });
+  });
   el.querySelectorAll(".btnRunProgram").forEach((btn) => {
     btn.addEventListener("click", () => {
       const program = programs.find((p) => p.id === Number(btn.dataset.id));
