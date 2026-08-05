@@ -1204,8 +1204,8 @@ input:focus {
   color: var(--text);
 }
 
-.live-program-banner { border-color: var(--accent-2); padding: 10px 14px; }
-.live-program-banner-head { margin-bottom: 6px; font-size: 13px; }
+.live-program-banner { border-color: var(--accent-2); padding: 14px 16px; }
+.live-program-banner-head { margin-bottom: 8px; font-size: 17px; }
 
 .live-program-chart {
   display: flex;
@@ -1245,12 +1245,12 @@ input:focus {
   outline-offset: 1px;
 }
 
-.live-total-progress { margin-bottom: 4px; }
 .live-total-track {
   height: 6px;
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
+  margin-bottom: 14px;
 }
 .live-total-fill {
   height: 100%;
@@ -1259,12 +1259,26 @@ input:focus {
   background: linear-gradient(90deg, var(--accent-2), var(--good));
   transition: width 600ms linear;
 }
-.live-total-labels {
+
+.live-program-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.live-program-stat {
   display: flex;
-  justify-content: space-between;
-  font-size: 10px;
+  flex-direction: column;
+  gap: 4px;
+}
+.live-program-stat-label {
+  font-size: 11px;
   color: var(--muted);
-  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.live-program-stat-value {
+  font-size: 20px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 

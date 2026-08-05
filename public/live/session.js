@@ -150,22 +150,37 @@ function updateProgramProgress() {
   }
 
   $("liveProgramSegmentLabel").textContent = `Tramo ${info.index + 1}/${program.segments.length} · ${info.seg.targetSpm} SPM`;
-  $("liveProgramSegmentTime").textContent = `${fmtTime(info.segRemaining)} restantes`;
+  $("liveProgramSegmentTime").textContent = fmtTime(info.segRemaining);
   const next = program.segments[info.index + 1];
-  $("liveProgramNextLabel").textContent = next ? `Siguiente: ${next.targetSpm} SPM (${fmtTime(next.durationSec)})` : "Último tramo";
+  $("liveProgramNextLabel").textContent = next ? `${next.targetSpm} SPM (${fmtTime(next.durationSec)})` : "Último tramo";
 
-  updateTotalProgress(program, elapsed);
+  updateTotalProgress(program, elapsed, info);
 }
 
 // Barra de avance de todo el entrenamiento, como la de una película: "llevas X / faltan Y".
-function updateTotalProgress(program, elapsed) {
+// El % se mide con la posición real en pantalla del tramo activo (no solo con la cuenta de
+// tiempo), porque la gráfica tiene espacios entre barras y un ancho mínimo por barra que no
+// son exactamente proporcionales a la duración — usar solo tiempo la desfasaba visualmente.
+function updateTotalProgress(program, elapsed, info) {
   const total = programTotalDuration(program);
   const clampedElapsed = Math.min(elapsed, total);
   const remaining = Math.max(0, total - clampedElapsed);
-  const percent = total > 0 ? (clampedElapsed / total) * 100 : 0;
+
+  let percent = total > 0 ? (clampedElapsed / total) * 100 : 0;
+  const chartEl = $("liveProgramChart");
+  const activeItem = info && chartEl ? chartEl.querySelectorAll(".chart-bar-item")[info.index] : null;
+  if (activeItem) {
+    const chartRect = chartEl.getBoundingClientRect();
+    const itemRect = activeItem.getBoundingClientRect();
+    if (chartRect.width > 0) {
+      const elapsedInSeg = info.seg.durationSec - info.segRemaining;
+      const fracInSeg = info.seg.durationSec > 0 ? elapsedInSeg / info.seg.durationSec : 0;
+      const pxPos = itemRect.left - chartRect.left + itemRect.width * fracInSeg;
+      percent = (pxPos / chartRect.width) * 100;
+    }
+  }
 
   $("liveTotalFill").style.width = `${percent}%`;
-  $("liveTotalElapsed").textContent = fmtTime(clampedElapsed);
   $("liveTotalRemaining").textContent = `-${fmtTime(remaining)}`;
 }
 

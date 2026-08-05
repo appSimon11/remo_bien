@@ -233,17 +233,24 @@
               <div id="liveProgramBanner" class="live-card live-program-banner" style="display:none;">
                 <div class="field-row live-program-banner-head">
                   <strong id="liveProgramSegmentLabel">Tramo 1/1</strong>
-                  <span id="liveProgramSegmentTime">00:00</span>
                 </div>
                 <div id="liveProgramChart" class="live-program-chart"></div>
-                <div class="live-total-progress">
-                  <div class="live-total-track"><div id="liveTotalFill" class="live-total-fill"></div></div>
-                  <div class="live-total-labels">
-                    <span id="liveTotalElapsed">00:00</span>
-                    <span id="liveTotalRemaining">-00:00</span>
+                <div class="live-total-track"><div id="liveTotalFill" class="live-total-fill"></div></div>
+
+                <div class="live-program-stats">
+                  <div class="live-program-stat">
+                    <span class="live-program-stat-label">Siguiente</span>
+                    <strong class="live-program-stat-value" id="liveProgramNextLabel">--</strong>
+                  </div>
+                  <div class="live-program-stat">
+                    <span class="live-program-stat-label">Falta de este tramo</span>
+                    <strong class="live-program-stat-value" id="liveProgramSegmentTime">00:00</strong>
+                  </div>
+                  <div class="live-program-stat">
+                    <span class="live-program-stat-label">Falta del programa</span>
+                    <strong class="live-program-stat-value" id="liveTotalRemaining">-00:00</strong>
                   </div>
                 </div>
-                <p id="liveProgramNextLabel" class="live-muted"></p>
               </div>
 
               <div class="live-metrics-row live-row-1">
